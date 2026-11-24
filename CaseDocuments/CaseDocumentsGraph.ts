@@ -81,10 +81,10 @@ interface ItemPermission {
 
 function toFileShares(permission: ItemPermission): FileShare[] {
   const roles = permission.roles ?? [];
-  if (permission.inheritedFrom || roles.indexOf("owner") >= 0) {
+  if (permission.inheritedFrom || roles.includes("owner")) {
     return [];
   }
-  const role: FileShareRole = roles.indexOf("write") >= 0 ? "write" : "read";
+  const role: FileShareRole = roles.includes("write") ? "write" : "read";
   const identities = permission.grantedToIdentitiesV2 ?? (permission.grantedToV2 ? [permission.grantedToV2] : []);
   const people = identities
     .map((identity) => identity.user ?? identity.siteUser)
