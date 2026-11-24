@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<SdkMessageProcessingStep Name="CaseDocumentsPlugin: Update of incident owner" SdkMessageProcessingStepId="{8d3e6a52-1b74-4c9f-b2e0-5a61f7c4e8b9}">
+  <SdkMessageId>{20bebb1b-ea3e-db11-86a7-000a3a5473e8}</SdkMessageId>
+  <PluginTypeName>CaseDocumentsPlugin.CaseDocumentsPlugin</PluginTypeName>
+  <PluginTypeId>{b7e2a1c4-5d33-4a18-8f60-2c9b0e4d71aa}</PluginTypeId>
+  <PrimaryEntity>incident</PrimaryEntity>
+  <AsyncAutoDelete>1</AsyncAutoDelete>
+  <Description>Keeps container access in line with the case owner.</Description>
+  <FilteringAttributes>ownerid</FilteringAttributes>
+  <InvocationSource>0</InvocationSource>
+  <Mode>1</Mode>
+  <Rank>1</Rank>
+  <EventHandlerTypeCode>4602</EventHandlerTypeCode>
+  <Stage>40</Stage>
+  <IsCustomizable>1</IsCustomizable>
+  <IsHidden>0</IsHidden>
+  <SupportedDeployment>0</SupportedDeployment>
+  <IntroducedVersion>1.0.0.0</IntroducedVersion>
+  <SdkMessageProcessingStepImages />
+</SdkMessageProcessingStep>

@@ -21,7 +21,7 @@
     <Version>$(FileVersion)</Version>
     <Authors>miljopilotene</Authors>
     <Company>Miljopilotene</Company>
-    <Description>Dataverse actions that connect cases to SharePoint Embedded containers.</Description>
+    <Description>Creates SharePoint Embedded containers for cases and manages who can open them.</Description>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,0 +1,13 @@
+<customapirequestparameter uniquename="ContactId">
+  <description default="ContactId">
+    <label description="ContactId" languagecode="1033" />
+  </description>
+  <displayname default="ContactId">
+    <label description="ContactId" languagecode="1033" />
+  </displayname>
+  <iscustomizable>1</iscustomizable>
+  <isoptional>0</isoptional>
+  <logicalentityname />
+  <name>new_GrantCaseContactAccess.ContactId</name>
+  <type>10</type>
+</customapirequestparameter>

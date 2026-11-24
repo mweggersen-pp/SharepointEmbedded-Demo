@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WebResource xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <WebResourceId>{e2a7c915-3f48-4b06-9d1e-6b8f0c2a5d73}</WebResourceId>
+  <Name>new_msalredirect.html</Name>
+  <DisplayName>Case documents sign-in redirect</DisplayName>
+  <WebResourceType>1</WebResourceType>
+  <IntroducedVersion>1.0.0.0</IntroducedVersion>
+  <IsEnabledForMobileClient>0</IsEnabledForMobileClient>
+  <IsAvailableForMobileOffline>0</IsAvailableForMobileOffline>
+  <IsCustomizable>1</IsCustomizable>
+  <CanBeDeleted>1</CanBeDeleted>
+  <IsHidden>0</IsHidden>
+  <FileName>/WebResources/new_msalredirect.html</FileName>
+</WebResource>

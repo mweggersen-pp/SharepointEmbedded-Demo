@@ -22,6 +22,7 @@
 
 .spe-search {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -102,6 +103,48 @@
   min-height: 480px;
   border: 1px solid #d1d1d1;
   border-radius: 4px;
+}
+
+.spe-docs h3 {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.spe-upload {
+  border: 1px solid #0f6cbd;
+  color: #0f6cbd;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.spe-upload.disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.spe-upload input {
+  display: none;
+}
+
+.spe-access {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.spe-docs select {
+  border: 1px solid #d1d1d1;
+  border-radius: 4px;
+  padding: 5px 6px;
+  font: inherit;
+}
+
+.spe-grant {
+  justify-content: flex-start;
+  flex-wrap: wrap;
 }
 
 .spe-extract {

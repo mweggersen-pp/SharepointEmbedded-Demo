@@ -1,0 +1,13 @@
+<customapirequestparameter uniquename="CaseId">
+  <description default="CaseId">
+    <label description="CaseId" languagecode="1033" />
+  </description>
+  <displayname default="CaseId">
+    <label description="CaseId" languagecode="1033" />
+  </displayname>
+  <iscustomizable>1</iscustomizable>
+  <isoptional>0</isoptional>
+  <logicalentityname />
+  <name>new_ListCaseAccess.CaseId</name>
+  <type>10</type>
+</customapirequestparameter>

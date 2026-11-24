@@ -61,13 +61,4 @@ if (-not (Test-Path $importZip)) {
 
 Write-Host "Importing the case document actions..."
 Invoke-Checked "pac" @("solution", "import", "--path", $importZip, "--publish-changes", "--activate-plugins")
-
-Write-Host "Building and publishing the case documents control..."
-Push-Location $root
-try {
-    Invoke-Checked "npm" @("run", "build")
-    Invoke-Checked "pac" @("pcf", "push", "--publisher-prefix", "new")
-} finally {
-    Pop-Location
-}
-Write-Host "Done. Open a saved case and the SharePoint Embedded tab. The container is created for that case."
+Write-Host "Done. New cases get a container automatically. Existing cases get one when the documents tab opens."

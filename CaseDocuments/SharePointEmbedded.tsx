@@ -1,32 +1,17 @@
 import * as React from "react";
+import { CaseAccess, CaseAccessPanel } from "./CaseAccessPanel";
+import { CaseFile, CaseFiles, isSignInRequired, SearchHit } from "./CaseDocumentsGraph";
 
-export interface CaseFile {
-  id: string;
-  name: string;
-  size?: number;
-  modifiedOn?: string;
-}
-
-export interface SearchHit {
-  itemId?: string;
-  name?: string;
-  webUrl?: string;
-  text: string;
-}
-
-export interface DocumentClient {
-  ensure(caseId: string): Promise<string>;
-  list(containerId: string): Promise<CaseFile[]>;
-  preview(containerId: string, itemId: string): Promise<string>;
-  download(containerId: string, itemId: string): Promise<string>;
-  search(containerId: string, query: string): Promise<SearchHit[]>;
+export interface CaseContainer {
+  containerId: string;
+  role: string;
 }
 
 export interface SharePointEmbeddedProps {
-  containerId: string;
   caseId: string;
-  client: DocumentClient;
-  onContainerId: (containerId: string) => void;
+  files: CaseFiles;
+  access: CaseAccess;
+  ensureContainer: (caseId: string) => Promise<CaseContainer>;
 }
 
 function formatSize(size?: number): string {
@@ -42,39 +27,16 @@ function formatSize(size?: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({
-  containerId,
-  caseId,
-  client,
-  onContainerId,
-}) => {
-  const [files, setFiles] = React.useState<CaseFile[]>([]);
+export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, files: caseFiles, access, ensureContainer }) => {
+  const [container, setContainer] = React.useState<CaseContainer | null>(null);
+  const [files, setFiles] = React.useState<CaseFile[] | null>(null);
   const [hits, setHits] = React.useState<SearchHit[]>([]);
   const [query, setQuery] = React.useState("");
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+  const [needsSignIn, setNeedsSignIn] = React.useState(false);
   const [status, setStatus] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
-
-  const load = React.useCallback(async () => {
-    if (!containerId) {
-      setFiles([]);
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      setFiles(await client.list(containerId));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load documents.");
-    } finally {
-      setBusy(false);
-    }
-  }, [client, containerId]);
-
-  React.useEffect(() => {
-    void load();
-  }, [load]);
 
   const run = async (work: () => Promise<void>) => {
     setBusy(true);
@@ -83,152 +45,191 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({
     try {
       await work();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The document request failed.");
+      if (isSignInRequired(caught)) {
+        setNeedsSignIn(true);
+      } else {
+        setError(caught instanceof Error ? caught.message : "The document request failed.");
+      }
     } finally {
       setBusy(false);
     }
   };
 
+  const containerId = container?.containerId ?? "";
+  const canEdit = container?.role === "writer";
+
   React.useEffect(() => {
-    if (containerId || !caseId) {
-      return;
+    setContainer(null);
+    setFiles(null);
+    setHits([]);
+    setPreviewUrl(null);
+    if (caseId) {
+      void run(async () => setContainer(await ensureContainer(caseId)));
     }
-    void run(async () => {
-      onContainerId(await client.ensure(caseId));
+  }, [caseId]);
+
+  const load = () =>
+    run(async () => {
+      setNeedsSignIn(false);
+      setFiles(await caseFiles.list(containerId));
     });
-  }, [caseId, containerId]);
+
+  React.useEffect(() => {
+    if (containerId) {
+      void load();
+    }
+  }, [containerId]);
+
+  if (!caseId) {
+    return (
+      <div className="spe-docs">
+        <h2>Case documents</h2>
+        <p className="spe-message">Save the case first. A document container is created for each saved case.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="spe-docs">
       <h2>Case documents</h2>
-      {!containerId && !error && (
-        <p className="spe-message">
-          {caseId
-            ? "Creating a SharePoint Embedded container for this case."
-            : "Save the case first. A container is created for each saved case."}
-        </p>
-      )}
+      {!container && !error && <p className="spe-message">Opening the document container for this case.</p>}
       {error && <p className="spe-message spe-error">{error}</p>}
       {status && <p className="spe-message">{status}</p>}
-
-      <form
-        className="spe-search"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!containerId || !query.trim()) {
-            return;
-          }
-          void run(async () => {
-            setHits(await client.search(containerId, query.trim()));
-            setPreviewUrl(null);
-          });
-        }}
-      >
-        <input
-          aria-label="Search documents with Copilot"
-          value={query}
-          placeholder="Ask Copilot about the documents on this case"
-          onChange={(event) => setQuery(event.target.value)}
-          disabled={!containerId || busy}
-        />
-        <button type="submit" disabled={!containerId || busy || !query.trim()}>
-          Search with Copilot
-        </button>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => {
-            if (!containerId) {
+      {needsSignIn && (
+        <div className="spe-message spe-row">
+          <span>Sign in to SharePoint to work with the documents on this case.</span>
+          <button
+            type="button"
+            onClick={() =>
               void run(async () => {
-                if (!caseId) {
-                  throw new Error("Save the case first. A container is created for each saved case.");
-                }
-                onContainerId(await client.ensure(caseId));
-              });
-              return;
+                await caseFiles.signIn();
+                await load();
+              })
             }
-            void load();
-          }}
-          disabled={busy || (!containerId && !caseId)}
-        >
-          Refresh
-        </button>
-      </form>
-
-      {hits.length > 0 && (
-        <ul className="spe-hits">
-          {hits.map((hit, index) => (
-            <li key={`${hit.webUrl ?? hit.itemId ?? "hit"}-${index}`}>
-              <div className="spe-row">
-                <strong>{hit.name ?? hit.webUrl ?? "Matching passage"}</strong>
-                {hit.itemId && (
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(async () => {
-                        setPreviewUrl(await client.preview(containerId, hit.itemId!));
-                      })
-                    }
-                  >
-                    Preview
-                  </button>
-                )}
-              </div>
-              <p className="spe-extract">{hit.text}</p>
-            </li>
-          ))}
-        </ul>
+          >
+            Sign in
+          </button>
+        </div>
       )}
 
-      <ul className="spe-files">
-        {files.map((file) => (
-          <li key={file.id}>
-            <div className="spe-row">
-              <div>
-                <strong>{file.name}</strong>
-                <div>
-                  {[formatSize(file.size), file.modifiedOn].filter(Boolean).join(" · ")}
+      {containerId && !needsSignIn && (
+        <>
+          <form
+            className="spe-search"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void run(async () => {
+                const found = await caseFiles.search(containerId, query.trim());
+                setHits(found);
+                setPreviewUrl(null);
+                if (found.length === 0) {
+                  setStatus("Copilot found nothing in this case's documents.");
+                }
+              });
+            }}
+          >
+            <input
+              aria-label="Search documents with Copilot"
+              value={query}
+              placeholder="Ask Copilot about the documents on this case"
+              onChange={(event) => setQuery(event.target.value)}
+              disabled={busy}
+            />
+            <button type="submit" disabled={busy || !query.trim()}>
+              Search with Copilot
+            </button>
+            <button type="button" className="secondary" onClick={() => void load()} disabled={busy}>
+              Refresh
+            </button>
+            {canEdit && (
+              <label className={`spe-upload${busy ? " disabled" : ""}`}>
+                Upload
+                <input
+                  type="file"
+                  multiple
+                  disabled={busy}
+                  onChange={(event) => {
+                    const chosen = Array.from(event.target.files ?? []);
+                    event.target.value = "";
+                    void run(async () => {
+                      for (const file of chosen) {
+                        setStatus(`Uploading ${file.name}.`);
+                        await caseFiles.upload(containerId, file);
+                      }
+                      setFiles(await caseFiles.list(containerId));
+                      setStatus(`Uploaded ${chosen.length} ${chosen.length === 1 ? "file" : "files"}.`);
+                    });
+                  }}
+                />
+              </label>
+            )}
+          </form>
+
+          {hits.length > 0 && (
+            <ul className="spe-hits">
+              {hits.map((hit, index) => (
+                <li key={`${hit.itemId}-${index}`}>
+                  <div className="spe-row">
+                    <strong>{hit.name}</strong>
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => void run(async () => setPreviewUrl(await caseFiles.preview(containerId, hit.itemId)))}
+                    >
+                      Preview
+                    </button>
+                  </div>
+                  <p className="spe-extract">{hit.text}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <ul className="spe-files">
+            {(files ?? []).map((file) => (
+              <li key={file.id}>
+                <div className="spe-row">
+                  <div>
+                    <strong>{file.name}</strong>
+                    <div>{[formatSize(file.size), file.modifiedOn].filter(Boolean).join(" · ")}</div>
+                  </div>
+                  <div className="spe-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => void run(async () => setPreviewUrl(await caseFiles.preview(containerId, file.id)))}
+                    >
+                      Preview
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void run(async () => {
+                          // A pop-up opened after an await is blocked; the download URL is served as an attachment.
+                          const link = document.createElement("a");
+                          link.href = await caseFiles.download(containerId, file.id);
+                          link.click();
+                          setStatus(`Download started for ${file.name}.`);
+                        })
+                      }
+                    >
+                      Download
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="spe-actions">
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      setPreviewUrl(await client.preview(containerId, file.id));
-                    })
-                  }
-                >
-                  Preview
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      const url = await client.download(containerId, file.id);
-                      window.open(url, "_blank", "noopener");
-                      setStatus(`Download started for ${file.name}.`);
-                    })
-                  }
-                >
-                  Download
-                </button>
-              </div>
-            </div>
-          </li>
-        ))}
-      </ul>
-      {containerId && !busy && files.length === 0 && !error && (
-        <p className="spe-message">No documents in this case container.</p>
+              </li>
+            ))}
+          </ul>
+          {files === null && busy && <p className="spe-message">Loading documents.</p>}
+          {files?.length === 0 && <p className="spe-message">No documents on this case yet.</p>}
+          {previewUrl && <iframe className="spe-preview" title="Document preview" src={previewUrl} />}
+        </>
       )}
-      {previewUrl && (
-        <iframe className="spe-preview" title="Document preview" src={previewUrl} />
-      )}
+
+      {container && <CaseAccessPanel caseId={caseId} access={access} canEdit={canEdit} />}
     </div>
   );
 };

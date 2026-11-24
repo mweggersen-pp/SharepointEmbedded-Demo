@@ -1,0 +1,229 @@
+import { PublicClientApplication } from "@azure/msal-browser";
+
+const graphRoot = "https://graph.microsoft.com/v1.0";
+const scopes = ["https://graph.microsoft.com/FileStorageContainer.Selected"];
+const simpleUploadLimit = 4 * 1024 * 1024;
+// Upload session chunks must be multiples of 320 KiB.
+const uploadChunkSize = 320 * 1024 * 16;
+
+export interface GraphSettings {
+  clientId: string;
+  tenantId: string;
+  containerTypeId: string;
+  loginHint: string;
+}
+
+export interface CaseFile {
+  id: string;
+  name: string;
+  size?: number;
+  modifiedOn?: string;
+  webUrl?: string;
+}
+
+export interface SearchHit {
+  itemId: string;
+  name: string;
+  text: string;
+}
+
+export interface CaseFiles {
+  list(containerId: string): Promise<CaseFile[]>;
+  preview(containerId: string, itemId: string): Promise<string>;
+  download(containerId: string, itemId: string): Promise<string>;
+  upload(containerId: string, file: File): Promise<void>;
+  search(containerId: string, query: string): Promise<SearchHit[]>;
+  signIn(): Promise<void>;
+}
+
+interface DriveItem {
+  id: string;
+  name: string;
+  size?: number;
+  lastModifiedDateTime?: string;
+  webUrl?: string;
+  file?: object;
+  "@microsoft.graph.downloadUrl"?: string;
+}
+
+interface RetrievalHit {
+  webUrl?: string;
+  extracts?: { text?: string }[];
+}
+
+interface MsalSession {
+  app: PublicClientApplication;
+  settings: GraphSettings;
+}
+
+export function isSignInRequired(caught: unknown): boolean {
+  return caught instanceof Error && caught.name === "SignInRequired";
+}
+
+function signInRequired(): Error {
+  const error = new Error("Sign in to SharePoint to work with the documents on this case.");
+  error.name = "SignInRequired";
+  return error;
+}
+
+function sameUrl(left: string, right: string): boolean {
+  return decodeURIComponent(left).toLowerCase() === decodeURIComponent(right).toLowerCase();
+}
+
+async function graphError(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as { error?: { message?: string } };
+    return body.error?.message ?? `Microsoft Graph returned ${response.status}.`;
+  } catch {
+    return `Microsoft Graph returned ${response.status}.`;
+  }
+}
+
+export function createCaseFiles(loadSettings: () => Promise<GraphSettings>): CaseFiles {
+  let pending: Promise<MsalSession> | null = null;
+  let session: MsalSession | null = null;
+
+  const start = (): Promise<MsalSession> => {
+    pending ??= (async () => {
+      const settings = await loadSettings();
+      const app = new PublicClientApplication({
+        auth: {
+          clientId: settings.clientId,
+          authority: `https://login.microsoftonline.com/${settings.tenantId}`,
+          redirectUri: `${window.location.origin}/WebResources/new_msalredirect.html`,
+        },
+        cache: { cacheLocation: "sessionStorage" },
+      });
+      await app.initialize();
+      session = { app, settings };
+      return session;
+    })().catch((caught: unknown) => {
+      pending = null;
+      throw caught;
+    });
+    return pending;
+  };
+
+  const token = async (): Promise<string> => {
+    const { app, settings } = await start();
+    const hint = settings.loginHint.toLowerCase();
+    const account = app.getAllAccounts().find((candidate) => candidate.username.toLowerCase() === hint);
+    try {
+      const result = account
+        ? await app.acquireTokenSilent({ scopes, account })
+        : await app.ssoSilent({ scopes, loginHint: settings.loginHint });
+      return result.accessToken;
+    } catch {
+      throw signInRequired();
+    }
+  };
+
+  const graph = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+    const headers: Record<string, string> = { Authorization: `Bearer ${await token()}` };
+    if (typeof init.body === "string") {
+      headers["Content-Type"] = "application/json";
+    }
+    const response = await fetch(`${graphRoot}${path}`, { ...init, headers });
+    if (!response.ok) {
+      throw new Error(await graphError(response));
+    }
+    return (await response.json()) as T;
+  };
+
+  const drive = (containerId: string) => `/drives/${encodeURIComponent(containerId)}`;
+
+  const list = async (containerId: string): Promise<CaseFile[]> => {
+    const page = await graph<{ value: DriveItem[] }>(
+      `${drive(containerId)}/root/children?$select=id,name,size,lastModifiedDateTime,webUrl,file&$top=200`
+    );
+    return page.value
+      .filter((item) => item.file)
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        size: item.size,
+        modifiedOn: item.lastModifiedDateTime ? new Date(item.lastModifiedDateTime).toLocaleString() : undefined,
+        webUrl: item.webUrl,
+      }));
+  };
+
+  return {
+    list,
+
+    async preview(containerId, itemId) {
+      const result = await graph<{ getUrl?: string }>(`${drive(containerId)}/items/${encodeURIComponent(itemId)}/preview`, {
+        method: "POST",
+        body: "{}",
+      });
+      if (!result.getUrl) {
+        throw new Error("SharePoint did not return a preview for this file.");
+      }
+      return `${result.getUrl}${result.getUrl.includes("?") ? "&" : "?"}nb=true`;
+    },
+
+    async download(containerId, itemId) {
+      const item = await graph<DriveItem>(`${drive(containerId)}/items/${encodeURIComponent(itemId)}`);
+      const url = item["@microsoft.graph.downloadUrl"];
+      if (!url) {
+        throw new Error("SharePoint did not return a download link for this file.");
+      }
+      return url;
+    },
+
+    async upload(containerId, file) {
+      const path = `${drive(containerId)}/root:/${encodeURIComponent(file.name)}:`;
+      if (file.size <= simpleUploadLimit) {
+        await graph<DriveItem>(`${path}/content?@microsoft.graph.conflictBehavior=rename`, { method: "PUT", body: file });
+        return;
+      }
+
+      const uploadSession = await graph<{ uploadUrl: string }>(`${path}/createUploadSession`, {
+        method: "POST",
+        body: JSON.stringify({ item: { "@microsoft.graph.conflictBehavior": "rename" } }),
+      });
+      for (let start = 0; start < file.size; start += uploadChunkSize) {
+        const end = Math.min(start + uploadChunkSize, file.size);
+        // The upload URL is pre-authenticated and rejects an Authorization header.
+        const response = await fetch(uploadSession.uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Range": `bytes ${start}-${end - 1}/${file.size}` },
+          body: file.slice(start, end),
+        });
+        if (!response.ok) {
+          throw new Error(await graphError(response));
+        }
+      }
+    },
+
+    async search(containerId, query) {
+      const { settings } = await start();
+      const [files, result] = await Promise.all([
+        list(containerId),
+        graph<{ retrievalHits?: RetrievalHit[] }>("/copilot/retrieval", {
+          method: "POST",
+          body: JSON.stringify({
+            queryString: query,
+            dataSource: "sharePointEmbedded",
+            dataSourceConfiguration: { sharePointEmbedded: { containerTypeId: settings.containerTypeId } },
+            maximumNumberOfResults: 25,
+          }),
+        }),
+      ]);
+      // Retrieval searches every container of the type, so keep only hits on this case's files.
+      return (result.retrievalHits ?? []).reduce<SearchHit[]>((hits, hit) => {
+        const file = files.find((candidate) => candidate.webUrl && hit.webUrl && sameUrl(candidate.webUrl, hit.webUrl));
+        if (file) {
+          const text = (hit.extracts ?? []).map((extract) => extract.text ?? "").filter(Boolean).join("\n\n");
+          hits.push({ itemId: file.id, name: file.name, text });
+        }
+        return hits;
+      }, []);
+    },
+
+    async signIn() {
+      // The popup must open in the click handler, so reuse the started session when there is one.
+      const { app, settings } = session ?? (await start());
+      await app.acquireTokenPopup({ scopes, loginHint: settings.loginHint });
+    },
+  };
+}
