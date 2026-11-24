@@ -6,11 +6,16 @@ $project = Join-Path $root "CaseDocumentsPlugin"
 $dll = Join-Path $project "bin\Release\net462\CaseDocumentsPlugin.dll"
 
 function Get-DataverseToken {
-    $raw = pac auth token
-    if (-not $raw) {
+    if ($script:dataverseToken) {
+        return $script:dataverseToken
+    }
+    $raw = @(pac auth token 2>&1 | ForEach-Object { "$_" }) -join ""
+    $match = [regex]::Match($raw, '[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+')
+    if (-not $match.Success) {
         throw "pac auth token did not return a token. Run pac auth create against $org first."
     }
-    return ($raw | Out-String).Trim()
+    $script:dataverseToken = $match.Value
+    return $script:dataverseToken
 }
 
 function Invoke-Dataverse {
