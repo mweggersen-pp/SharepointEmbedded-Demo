@@ -1,5 +1,5 @@
-<?xml version="1.0" encoding="utf-8"?>
-<SdkMessageProcessingStep Name="CaseDocumentsPlugin: Create of incident" SdkMessageProcessingStepId="{4f1c2b7a-9e35-4d60-a8b1-7c2e5f90d314}">
+﻿<?xml version="1.0" encoding="utf-8"?>
+<SdkMessageProcessingStep Name="CaseDocumentsPlugin: Create of incident" SdkMessageProcessingStepId="{4f1c2b7a-9e35-4d60-a8b1-7c2e5f90d314}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <SdkMessageId>{9ebdbb1b-ea3e-db11-86a7-000a3a5473e8}</SdkMessageId>
   <PluginTypeName>CaseDocumentsPlugin.CaseDocumentsPlugin</PluginTypeName>
   <PluginTypeId>{b7e2a1c4-5d33-4a18-8f60-2c9b0e4d71aa}</PluginTypeId>

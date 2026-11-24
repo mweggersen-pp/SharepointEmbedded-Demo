@@ -11,7 +11,7 @@ Case documents for Dynamics 365. Each case gets its own SharePoint Embedded cont
   - When a case is created, it creates the container. If a case has no container yet, the container is created when the tab opens.
   - Colleagues get the same access in the container that they have to the case in Dynamics: Edit if they can write the case, Read if they can only read it. This is checked when someone opens the tab and whenever the case owner changes.
   - External contacts are invited as Microsoft Entra guests, using the email address on their contact record. They get Read or Edit, chosen from the dropdown.
-- **The solution project** (`CaseDocumentsActions/`) contains:
+- **The solution** (`CaseDocumentsActions/src`, unpacked) contains:
   - the signed plugin
   - two asynchronous steps: case Create, and case Update of `ownerid`
   - the sign-in redirect page `new_msalredirect.html`
@@ -57,4 +57,4 @@ npm run build
 pac pcf push --publisher-prefix new
 ```
 
-3. From this repo, run `./Register-CaseDocuments.ps1`. It needs the .NET SDK and a `pac` profile signed in to `https://mpcustomdemo2.crm19.dynamics.com`. It copies the publisher from `SharePointEmbededDemo`, builds the solution project and imports it.
+3. From this repo, run `./Register-CaseDocuments.ps1`. It needs the .NET SDK and a `pac` profile signed in to `https://mpcustomdemo2.crm19.dynamics.com`. It builds the plugin, copies the publisher from `SharePointEmbededDemo`, packs the solution with `pac solution pack` and imports it.

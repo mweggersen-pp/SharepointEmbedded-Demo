@@ -1,6 +1,7 @@
 $ErrorActionPreference = "Stop"
 $org = "https://mpcustomdemo2.crm19.dynamics.com"
 $publisherSolution = "SharePointEmbededDemo"
+$assemblyFolder = "CaseDocumentsPlugin-c3a1d0e2-7b44-4f0a-9c31-6a0e5d2b91f4"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 function Invoke-Checked {
@@ -23,27 +24,23 @@ if (Test-Path $work) {
 }
 New-Item -ItemType Directory -Path $work | Out-Null
 
+Write-Host "Building the plugin..."
+$pluginProject = Join-Path (Join-Path $root "CaseDocumentsPlugin") "CaseDocumentsPlugin.csproj"
+$pluginOutput = Join-Path $work "plugin"
+Invoke-Checked "dotnet" @("build", $pluginProject, "-c", "Release", "-o", $pluginOutput)
+
+$solutionFolder = Join-Path $work "solution"
+Copy-Item (Join-Path (Join-Path $root "CaseDocumentsActions") "src") $solutionFolder -Recurse
+Copy-Item (Join-Path $pluginOutput "CaseDocumentsPlugin.dll") (Join-Path (Join-Path $solutionFolder "PluginAssemblies") $assemblyFolder)
+
 Write-Host "Reading the publisher from $publisherSolution..."
 $exportZip = Join-Path $work "publisher.zip"
 $exportFolder = Join-Path $work "publisher"
 Invoke-Checked "pac" @("solution", "export", "--name", $publisherSolution, "--path", $exportZip, "--overwrite")
 Invoke-Checked "pac" @("solution", "unpack", "--zipfile", $exportZip, "--folder", $exportFolder)
 
-foreach ($project in @("CaseDocumentsPlugin", "CaseDocumentsActions")) {
-    $source = Join-Path $root $project
-    $destination = Join-Path $work $project
-    Get-ChildItem -Path $source -Recurse -File |
-        Where-Object { $_.FullName.Substring($source.Length) -notmatch '^[\\/](bin|obj)[\\/]' } |
-        ForEach-Object {
-            $relative = $_.FullName.Substring($source.Length + 1)
-            $copy = Join-Path $destination $relative
-            New-Item -ItemType Directory -Path (Split-Path -Parent $copy) -Force | Out-Null
-            Copy-Item $_.FullName $copy
-        }
-}
-
 $exportedPath = Join-Path (Join-Path $exportFolder "Other") "Solution.xml"
-$targetPath = Join-Path (Join-Path (Join-Path (Join-Path $work "CaseDocumentsActions") "src") "Other") "Solution.xml"
+$targetPath = Join-Path (Join-Path $solutionFolder "Other") "Solution.xml"
 [xml]$exported = Get-Content -Path $exportedPath -Raw
 [xml]$target = Get-Content -Path $targetPath -Raw
 $publisher = $target.ImportNode($exported.ImportExportXml.SolutionManifest.Publisher, $true)
@@ -51,13 +48,9 @@ $manifest = $target.ImportExportXml.SolutionManifest
 [void]$manifest.ReplaceChild($publisher, $manifest.Publisher)
 $target.Save($targetPath)
 
-Write-Host "Building the plugin and the case document actions..."
-$solutionProject = Join-Path (Join-Path $work "CaseDocumentsActions") "CaseDocumentsActions.cdsproj"
-Invoke-Checked "dotnet" @("build", $solutionProject, "-c", "Release")
-$importZip = Join-Path (Join-Path (Join-Path (Join-Path $work "CaseDocumentsActions") "bin") "Release") "CaseDocumentsActions.zip"
-if (-not (Test-Path $importZip)) {
-    throw "The build did not produce $importZip"
-}
+Write-Host "Packing the case document actions..."
+$importZip = Join-Path $work "CaseDocumentsActions.zip"
+Invoke-Checked "pac" @("solution", "pack", "--zipfile", $importZip, "--folder", $solutionFolder, "--packagetype", "Unmanaged")
 
 Write-Host "Importing the case document actions..."
 Invoke-Checked "pac" @("solution", "import", "--path", $importZip, "--publish-changes", "--activate-plugins")
