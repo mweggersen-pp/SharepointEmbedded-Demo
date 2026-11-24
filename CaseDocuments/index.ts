@@ -1,5 +1,5 @@
 import { IInputs, IOutputs } from "./generated/ManifestTypes";
-import { CaseFile, DocumentClient, HelloWorld, IHelloWorldProps, SearchHit } from "./HelloWorld";
+import { CaseFile, DocumentClient, SearchHit, SharePointEmbedded, SharePointEmbeddedProps } from "./SharePointEmbedded";
 import * as React from "react";
 
 interface ActionResult {
@@ -104,11 +104,11 @@ export class CaseDocuments implements ComponentFramework.ReactControl<IInputs, I
   }
 
   public updateView(context: ComponentFramework.Context<IInputs>): React.ReactElement {
-    const props: IHelloWorldProps = {
+    const props: SharePointEmbeddedProps = {
       containerId: context.parameters.sampleProperty.raw ?? "",
       client: createClient(context),
     };
-    return React.createElement(HelloWorld, props);
+    return React.createElement(SharePointEmbedded, props);
   }
 
   public getOutputs(): IOutputs {

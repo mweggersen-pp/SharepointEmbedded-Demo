@@ -7,10 +7,10 @@ Case documents control for SharePoint Embedded. One container per Dynamics case.
 Copy these files over the PCF project that `pac pcf init` created:
 
 - `CaseDocuments/index.ts`
-- `CaseDocuments/HelloWorld.tsx`
-- `CaseDocuments/css/HelloWorld.css`
+- `CaseDocuments/SharePointEmbedded.tsx`
+- `CaseDocuments/css/SharePointEmbedded.css`
 
-In `CaseDocuments/ControlManifest.Input.xml`, inside the `<control>` element, add:
+In `CaseDocuments/ControlManifest.Input.xml`, change the stylesheet path to `css/SharePointEmbedded.css` and, inside the `<control>` element, add:
 
 ```xml
 <feature-usage>

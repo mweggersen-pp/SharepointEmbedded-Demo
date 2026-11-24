@@ -21,7 +21,7 @@ export interface DocumentClient {
   search(containerId: string, query: string): Promise<SearchHit[]>;
 }
 
-export interface IHelloWorldProps {
+export interface SharePointEmbeddedProps {
   containerId: string;
   client: DocumentClient;
 }
@@ -39,7 +39,7 @@ function formatSize(size?: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export const HelloWorld: React.FC<IHelloWorldProps> = ({ containerId, client }) => {
+export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ containerId, client }) => {
   const [files, setFiles] = React.useState<CaseFile[]>([]);
   const [hits, setHits] = React.useState<SearchHit[]>([]);
   const [query, setQuery] = React.useState("");
