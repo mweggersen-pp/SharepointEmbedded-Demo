@@ -1,4 +1,5 @@
 import * as React from "react";
+import { errorMessage } from "./CaseDocumentsGraph";
 
 export type ContactRole = "reader" | "writer";
 
@@ -54,7 +55,7 @@ export const CaseAccessPanel: React.FC<CaseAccessPanelProps> = ({ caseId, access
       await work();
       setEntries(await access.list(caseId));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The access request failed.");
+      setError(errorMessage(caught, "The access request failed."));
     } finally {
       setBusy(false);
     }

@@ -61,8 +61,20 @@ export function errorMessage(caught: unknown, fallback: string): string {
   if (caught instanceof Error) {
     return caught.message;
   }
-  if (typeof caught === "object" && caught !== null && "message" in caught && typeof caught.message === "string") {
-    return caught.message;
+  if (typeof caught === "string" && caught) {
+    return caught;
+  }
+  if (typeof caught === "object" && caught !== null) {
+    if ("message" in caught && typeof caught.message === "string" && caught.message) {
+      return caught.message;
+    }
+    if ("error" in caught) {
+      return errorMessage(caught.error, fallback);
+    }
+    const details = JSON.stringify(caught);
+    if (details && details !== "{}") {
+      return `${fallback} ${details.slice(0, 400)}`;
+    }
   }
   return fallback;
 }
