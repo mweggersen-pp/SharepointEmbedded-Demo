@@ -145,7 +145,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
   const openPreview = (itemId: string, name: string) =>
     run(`Opening ${name}`, async () => setPreview({ name, url: await caseFiles.preview(containerId, itemId) }));
 
-  const ask = (text: string) => {
+  const ask = async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || asking) {
       return;
@@ -153,16 +153,16 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
     const id = Date.now();
     setQuestion("");
     setTurns((current) => [...current, { id, question: trimmed }]);
-    caseFiles.search(containerId, trimmed).then(
-      (hits) => setTurns((current) => current.map((turn) => (turn.id === id ? { ...turn, hits } : turn))),
-      (caught: unknown) => {
-        if (isSignInRequired(caught)) {
-          setNeedsSignIn(true);
-        }
-        const message = errorMessage(caught, "Copilot could not answer.");
-        setTurns((current) => current.map((turn) => (turn.id === id ? { ...turn, error: message } : turn)));
+    try {
+      const hits = await caseFiles.search(containerId, trimmed);
+      setTurns((current) => current.map((turn) => (turn.id === id ? { ...turn, hits } : turn)));
+    } catch (caught) {
+      if (isSignInRequired(caught)) {
+        setNeedsSignIn(true);
       }
-    );
+      const message = errorMessage(caught, "Copilot could not answer.");
+      setTurns((current) => current.map((turn) => (turn.id === id ? { ...turn, error: message } : turn)));
+    }
   };
 
   if (!caseId) {
@@ -391,14 +391,14 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
               <span className="spe-sparkle" aria-hidden="true">✦</span>
               <div>
                 <h3>Ask Copilot</h3>
-                <p>Answers come from this case's documents only.</p>
+                <p>Answers come from this case&apos;s documents only.</p>
               </div>
             </div>
             <div className="spe-transcript">
               {turns.length === 0 && (
                 <div className="spe-suggestions">
                   {suggestedQuestions.map((suggestion) => (
-                    <button key={suggestion} type="button" className="spe-suggestion" onClick={() => ask(suggestion)}>
+                    <button key={suggestion} type="button" className="spe-suggestion" onClick={() => void ask(suggestion)}>
                       {suggestion}
                     </button>
                   ))}
@@ -416,7 +416,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                       </span>
                     )}
                     {turn.error && <p className="spe-error-text">{turn.error}</p>}
-                    {turn.hits?.length === 0 && <p>I found nothing about that in this case's documents.</p>}
+                    {turn.hits?.length === 0 && <p>I found nothing about that in this case&apos;s documents.</p>}
                     {turn.hits?.map((hit, index) => (
                       <div key={`${hit.itemId}-${index}`} className="spe-passage">
                         <p>{hit.text || "This file matches, but has no text passage."}</p>
@@ -434,7 +434,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
               className="spe-ask"
               onSubmit={(event) => {
                 event.preventDefault();
-                ask(question);
+                void ask(question);
               }}
             >
               <textarea
@@ -446,7 +446,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
-                    ask(question);
+                    void ask(question);
                   }
                 }}
               />

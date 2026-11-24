@@ -72,6 +72,17 @@ export const CaseAccessPanel: React.FC<CaseAccessPanelProps> = ({ caseId, access
 
   const busy = progress !== null;
 
+  const chooseContact = async () => {
+    try {
+      const picked = await access.pickContact();
+      if (picked) {
+        setContact(picked);
+      }
+    } catch {
+      setError("Could not open the contact lookup.");
+    }
+  };
+
   React.useEffect(() => {
     void run("Loading who has access", () => Promise.resolve());
   }, [caseId]);
@@ -158,12 +169,7 @@ export const CaseAccessPanel: React.FC<CaseAccessPanelProps> = ({ caseId, access
                 type="button"
                 className={`spe-contact-pick${contact ? " chosen" : ""}`}
                 disabled={busy}
-                onClick={() =>
-                  void access.pickContact().then(
-                    (picked) => picked && setContact(picked),
-                    () => setError("Could not open the contact lookup.")
-                  )
-                }
+                  onClick={() => void chooseContact()}
               >
                 {contact ? (
                   <>
