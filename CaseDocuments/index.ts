@@ -22,7 +22,7 @@ function serviceMessage(caught: unknown): Error {
   const message = caught instanceof Error ? caught.message : "The document request failed.";
   if (/not find|not a valid|Resource not found|does not exist/i.test(message)) {
     return new Error(
-      "The document actions are not registered in this environment yet. List, preview, download, and Copilot search call new_ListCaseDocuments, new_PreviewCaseDocument, new_DownloadCaseDocument, and new_SearchCaseDocuments."
+      "The document actions are not registered in this environment yet. Container creation, list, preview, download, and Copilot search call new_EnsureCaseContainer, new_ListCaseDocuments, new_PreviewCaseDocument, new_DownloadCaseDocument, and new_SearchCaseDocuments."
     );
   }
   return new Error(message);
@@ -60,8 +60,22 @@ async function callAction(
   }
 }
 
+function readCaseId(context: ComponentFramework.Context<IInputs>): string {
+  const mode = context.mode as ComponentFramework.Mode & { contextInfo?: { entityId?: string } };
+  return (mode.contextInfo?.entityId ?? "").replace(/[{}]/g, "");
+}
+
 function createClient(context: ComponentFramework.Context<IInputs>): DocumentClient {
   return {
+    async ensure(caseId: string): Promise<string> {
+      const payload = (await callAction(context, "new_EnsureCaseContainer", { CaseId: caseId })) as {
+        containerId?: string;
+      };
+      if (!payload.containerId) {
+        throw new Error("Container creation did not return an id.");
+      }
+      return payload.containerId;
+    },
     async list(containerId: string): Promise<CaseFile[]> {
       const payload = (await callAction(context, "new_ListCaseDocuments", { ContainerId: containerId })) as {
         files?: CaseFile[];
@@ -100,6 +114,8 @@ function createClient(context: ComponentFramework.Context<IInputs>): DocumentCli
 
 export class CaseDocuments implements ComponentFramework.ReactControl<IInputs, IOutputs> {
   private notifyOutputChanged: () => void;
+  private ensuredContainerId = "";
+  private boundCaseId = "";
 
   constructor() {
     // React controls do not keep instance state here.
@@ -116,15 +132,41 @@ export class CaseDocuments implements ComponentFramework.ReactControl<IInputs, I
   }
 
   public updateView(context: ComponentFramework.Context<IInputs>): React.ReactElement {
+    const recordId = readCaseId(context);
+    if (this.boundCaseId !== recordId) {
+      this.boundCaseId = recordId;
+      this.ensuredContainerId = "";
+    }
+    const storedId = context.parameters.sampleProperty.raw ?? "";
+    const containerId = this.ensuredContainerId !== "" ? this.ensuredContainerId : storedId;
     const props: SharePointEmbeddedProps = {
-      containerId: context.parameters.sampleProperty.raw ?? "",
+      containerId,
+      caseId: readCaseId(context),
       client: createClient(context),
+      onContainerId: (id: string) => {
+        if (!id || this.ensuredContainerId === id) {
+          return;
+        }
+        this.ensuredContainerId = id;
+        if (recordId) {
+          void context.webAPI
+            .updateRecord("incident", recordId, { new_sharepointcontainer: id })
+            .then(
+              () => undefined,
+              () => undefined
+            );
+        }
+        this.notifyOutputChanged();
+      },
     };
     return React.createElement(SharePointEmbedded, props);
   }
 
   public getOutputs(): IOutputs {
-    return {};
+    if (!this.ensuredContainerId) {
+      return {};
+    }
+    return { sampleProperty: this.ensuredContainerId };
   }
 
   public destroy(): void {

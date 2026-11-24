@@ -15,6 +15,7 @@ export interface SearchHit {
 }
 
 export interface DocumentClient {
+  ensure(caseId: string): Promise<string>;
   list(containerId: string): Promise<CaseFile[]>;
   preview(containerId: string, itemId: string): Promise<string>;
   download(containerId: string, itemId: string): Promise<string>;
@@ -23,7 +24,9 @@ export interface DocumentClient {
 
 export interface SharePointEmbeddedProps {
   containerId: string;
+  caseId: string;
   client: DocumentClient;
+  onContainerId: (containerId: string) => void;
 }
 
 function formatSize(size?: number): string {
@@ -39,7 +42,12 @@ function formatSize(size?: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ containerId, client }) => {
+export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({
+  containerId,
+  caseId,
+  client,
+  onContainerId,
+}) => {
   const [files, setFiles] = React.useState<CaseFile[]>([]);
   const [hits, setHits] = React.useState<SearchHit[]>([]);
   const [query, setQuery] = React.useState("");
@@ -81,12 +89,23 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ containe
     }
   };
 
+  React.useEffect(() => {
+    if (containerId || !caseId) {
+      return;
+    }
+    void run(async () => {
+      onContainerId(await client.ensure(caseId));
+    });
+  }, [caseId, containerId]);
+
   return (
     <div className="spe-docs">
       <h2>Case documents</h2>
-      {!containerId && (
+      {!containerId && !error && (
         <p className="spe-message">
-          This case does not have a SharePoint Embedded container yet. The container id is stored in SharePoint container.
+          {caseId
+            ? "Creating a SharePoint Embedded container for this case."
+            : "Save the case first. A container is created for each saved case."}
         </p>
       )}
       {error && <p className="spe-message spe-error">{error}</p>}
@@ -115,7 +134,23 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ containe
         <button type="submit" disabled={!containerId || busy || !query.trim()}>
           Search with Copilot
         </button>
-        <button type="button" className="secondary" onClick={() => void load()} disabled={!containerId || busy}>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => {
+            if (!containerId) {
+              void run(async () => {
+                if (!caseId) {
+                  throw new Error("Save the case first. A container is created for each saved case.");
+                }
+                onContainerId(await client.ensure(caseId));
+              });
+              return;
+            }
+            void load();
+          }}
+          disabled={busy || (!containerId && !caseId)}
+        >
           Refresh
         </button>
       </form>
