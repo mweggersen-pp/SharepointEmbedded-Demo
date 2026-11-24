@@ -497,8 +497,11 @@
 /* Preview */
 
 .spe-preview-panel {
-  padding: 0;
+  flex-basis: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--spe-line);
   overflow: hidden;
+  animation: spe-rise 0.2s ease both;
 }
 
 .spe-preview-bar {

@@ -24,6 +24,7 @@ interface CopilotTurn {
 }
 
 interface OpenPreview {
+  itemId: string;
   name: string;
   url: string;
 }
@@ -80,6 +81,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
   const [sharing, setSharing] = React.useState<string | null>(null);
   const transcriptEnd = React.useRef<HTMLDivElement>(null);
   const filePicker = React.useRef<HTMLInputElement>(null);
+  const previewPanel = React.useRef<HTMLDivElement>(null);
 
   const run = async (label: string, work: () => Promise<void>) => {
     setProgress(label);
@@ -126,6 +128,10 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
   }, [containerId]);
 
   React.useEffect(() => {
+    previewPanel.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [preview?.itemId]);
+
+  React.useEffect(() => {
     transcriptEnd.current?.scrollIntoView({ block: "nearest" });
   }, [turns]);
 
@@ -145,7 +151,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
   };
 
   const openPreview = (itemId: string, name: string) =>
-    run(`Opening ${name}`, async () => setPreview({ name, url: await caseFiles.preview(containerId, itemId) }));
+    run(`Opening ${name}`, async () => setPreview({ itemId, name, url: await caseFiles.preview(containerId, itemId) }));
 
   const ask = async (text: string) => {
     const trimmed = text.trim();
@@ -285,7 +291,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                 {(files ?? []).map((file) => {
                   const badge = fileBadge(file.name);
                   return (
-                    <li key={file.id} className={preview?.name === file.name ? "selected" : undefined}>
+                    <li key={file.id} className={preview?.itemId === file.id ? "selected" : undefined}>
                       <span className={`spe-badge spe-badge-${badge.kind}`}>{badge.label}</span>
                       <div className="spe-file-name">
                         <strong title={file.name}>{file.name}</strong>
@@ -302,7 +308,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                               void run(`Deleting ${file.name}`, async () => {
                                 await caseFiles.remove(containerId, file.id);
                                 setConfirmDelete(null);
-                                if (preview?.name === file.name) {
+                                if (preview?.itemId === file.id) {
                                   setPreview(null);
                                 }
                                 setFiles(await caseFiles.list(containerId));
@@ -361,6 +367,24 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                         )}
                       </div>
                       )}
+                      {preview?.itemId === file.id && (
+                        <div className="spe-preview-panel" ref={previewPanel}>
+                          <div className="spe-preview-bar">
+                            <strong className="spe-file-name" title={preview.name}>
+                              Preview · {preview.name}
+                            </strong>
+                            <div className="spe-actions">
+                              <a className="spe-preview-link" href={preview.url} target="_blank" rel="noopener noreferrer">
+                                Open in new tab ↗
+                              </a>
+                              <button type="button" className="spe-close" aria-label="Close preview" onClick={() => setPreview(null)}>
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                          <iframe className="spe-preview" title={`Preview of ${preview.name}`} src={preview.url} />
+                        </div>
+                      )}
                       {sharing === file.id && (
                         <FileSharePanel containerId={containerId} file={file} files={caseFiles} access={access} onClose={() => setSharing(null)} />
                       )}
@@ -376,25 +400,6 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                 </div>
               )}
             </section>
-
-            {preview && (
-              <section className="spe-panel spe-preview-panel">
-                <div className="spe-preview-bar">
-                  <strong className="spe-file-name" title={preview.name}>
-                    {preview.name}
-                  </strong>
-                  <div className="spe-actions">
-                    <a className="spe-preview-link" href={preview.url} target="_blank" rel="noopener noreferrer">
-                      Open in new tab ↗
-                    </a>
-                    <button type="button" className="spe-close" aria-label="Close preview" onClick={() => setPreview(null)}>
-                      ✕
-                    </button>
-                  </div>
-                </div>
-                <iframe className="spe-preview" title={`Preview of ${preview.name}`} src={preview.url} />
-              </section>
-            )}
 
             <section className="spe-panel">
               <CaseAccessPanel caseId={caseId} access={access} canEdit={canEdit} />
