@@ -463,7 +463,23 @@ namespace CaseDocumentsPlugin
         public ContainerPermission GrantPermission(string containerId, string upn, string role)
         {
             var payload = "{\"roles\":[\"" + role + "\"],\"grantedToV2\":{\"user\":{\"userPrincipalName\":\"" + JsonText.Escape(upn) + "\"}}}";
-            return ToPermission(JsonText.Deserialize<PermissionItem>(Send(HttpMethod.Post, ContainerUrl(containerId) + "/permissions", payload)));
+            // SharePoint sees a newly invited guest only after Entra replicates it, which can take a minute.
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    return ToPermission(JsonText.Deserialize<PermissionItem>(Send(HttpMethod.Post, ContainerUrl(containerId) + "/permissions", payload)));
+                }
+                catch (InvalidPluginExecutionException ex) when (ex.Message.IndexOf("could not be found", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    if (attempt == 6)
+                    {
+                        throw new InvalidPluginExecutionException(
+                            "The invitation was sent, but Microsoft is still setting up the guest account. Try Share again in a minute.");
+                    }
+                    System.Threading.Thread.Sleep(TimeSpan.FromSeconds(5 * attempt));
+                }
+            }
         }
 
         public ContainerPermission UpdatePermission(string containerId, string permissionId, string role)
