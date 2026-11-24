@@ -90,7 +90,13 @@ export class CaseDocuments implements ComponentFramework.ReactControl<IInputs, I
       },
       async pickContact(): Promise<ContactChoice | null> {
         const [picked] = await context.utils.lookupObjects({ entityTypes: ["contact"], defaultEntityType: "contact", allowMultiSelect: false });
-        return picked ? { id: picked.id.replace(/[{}]/g, ""), name: picked.name ?? "Contact" } : null;
+        if (!picked) {
+          return null;
+        }
+        const id = picked.id.replace(/[{}]/g, "");
+        const record = await webApi.retrieveRecord("contact", id, "?$select=emailaddress1");
+        const email = typeof record.emailaddress1 === "string" ? record.emailaddress1 : "";
+        return { id, name: picked.name ?? "Contact", email };
       },
       async grant(caseId, contactId, role) {
         await callAction(webApi, "new_GrantCaseContactAccess", { CaseId: caseId, ContactId: contactId, Role: role });

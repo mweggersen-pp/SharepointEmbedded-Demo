@@ -428,6 +428,27 @@
   box-shadow: 0 4px 14px rgba(28, 27, 46, 0.07);
 }
 
+.spe-files li {
+  flex-wrap: wrap;
+}
+
+.spe-file-share {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--spe-soft);
+  border: 1px solid var(--spe-line);
+  animation: spe-rise 0.2s ease both;
+}
+
+.spe-docs button.spe-ghost.on {
+  border-color: var(--spe-accent);
+  color: var(--spe-accent);
+}
+
 .spe-files li.selected {
   border-color: var(--spe-accent);
   box-shadow: 0 0 0 3px rgba(91, 61, 245, 0.12);

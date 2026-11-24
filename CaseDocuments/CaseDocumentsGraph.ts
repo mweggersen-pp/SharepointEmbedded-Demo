@@ -27,12 +27,25 @@ export interface SearchHit {
   text: string;
 }
 
+export type FileShareRole = "read" | "write";
+
+export interface FileShare {
+  key: string;
+  permissionId: string;
+  name: string;
+  email: string;
+  role: FileShareRole;
+}
+
 export interface CaseFiles {
   list(containerId: string): Promise<CaseFile[]>;
   preview(containerId: string, itemId: string): Promise<string>;
   download(containerId: string, itemId: string): Promise<string>;
   upload(containerId: string, file: File): Promise<void>;
   remove(containerId: string, itemId: string): Promise<void>;
+  listShares(containerId: string, itemId: string): Promise<FileShare[]>;
+  share(containerId: string, itemId: string, email: string, role: FileShareRole): Promise<void>;
+  unshare(containerId: string, itemId: string, permissionId: string): Promise<void>;
   search(containerId: string, query: string): Promise<SearchHit[]>;
   signIn(): Promise<void>;
 }
@@ -50,6 +63,37 @@ interface DriveItem {
 interface RetrievalHit {
   webUrl?: string;
   extracts?: { text?: string }[];
+}
+
+interface PermissionIdentity {
+  user?: { displayName?: string; email?: string };
+  siteUser?: { displayName?: string; email?: string; loginName?: string };
+}
+
+interface ItemPermission {
+  id: string;
+  roles?: string[];
+  inheritedFrom?: object;
+  grantedToV2?: PermissionIdentity;
+  grantedToIdentitiesV2?: PermissionIdentity[];
+  invitation?: { email?: string };
+}
+
+function toFileShares(permission: ItemPermission): FileShare[] {
+  const roles = permission.roles ?? [];
+  if (permission.inheritedFrom || roles.indexOf("owner") >= 0) {
+    return [];
+  }
+  const role: FileShareRole = roles.indexOf("write") >= 0 ? "write" : "read";
+  const identities = permission.grantedToIdentitiesV2 ?? (permission.grantedToV2 ? [permission.grantedToV2] : []);
+  const people = identities
+    .map((identity) => identity.user ?? identity.siteUser)
+    .filter((person): person is { displayName?: string; email?: string } => person !== undefined)
+    .map((person) => ({ name: person.displayName ?? "", email: person.email ?? "" }));
+  if (people.length === 0 && permission.invitation?.email) {
+    people.push({ name: "", email: permission.invitation.email });
+  }
+  return people.map((person, index) => ({ key: `${permission.id}-${index}`, permissionId: permission.id, role, ...person }));
 }
 
 interface MsalSession {
@@ -228,6 +272,25 @@ export function createCaseFiles(loadSettings: () => Promise<GraphSettings>): Cas
 
     async remove(containerId, itemId) {
       await graph<undefined>(`${drive(containerId)}/items/${encodeURIComponent(itemId)}`, { method: "DELETE" });
+    },
+
+    async listShares(containerId, itemId) {
+      const page = await graph<{ value: ItemPermission[] }>(`${drive(containerId)}/items/${encodeURIComponent(itemId)}/permissions`);
+      return page.value.reduce<FileShare[]>((all, permission) => all.concat(toFileShares(permission)), []);
+    },
+
+    async share(containerId, itemId, email, role) {
+      await graph<unknown>(`${drive(containerId)}/items/${encodeURIComponent(itemId)}/invite`, {
+        method: "POST",
+        body: JSON.stringify({ recipients: [{ email }], roles: [role], requireSignIn: true, sendInvitation: true }),
+      });
+    },
+
+    async unshare(containerId, itemId, permissionId) {
+      await graph<undefined>(
+        `${drive(containerId)}/items/${encodeURIComponent(itemId)}/permissions/${encodeURIComponent(permissionId)}`,
+        { method: "DELETE" }
+      );
     },
 
     async search(containerId, query) {

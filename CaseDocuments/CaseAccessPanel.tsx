@@ -15,6 +15,7 @@ export interface AccessEntry {
 export interface ContactChoice {
   id: string;
   name: string;
+  email: string;
 }
 
 export interface CaseAccess {
@@ -34,7 +35,7 @@ interface CaseAccessPanelProps {
 
 const roleLabels: Record<string, string> = { reader: "Read", writer: "Edit", manager: "Manage", owner: "Owner" };
 
-function initials(name: string): string {
+export function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   return ((parts[0]?.[0] ?? "?") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 }
@@ -153,7 +154,7 @@ export const CaseAccessPanel: React.FC<CaseAccessPanelProps> = ({ caseId, access
           }}
         >
           <div className="spe-row">
-            <span className="spe-grant-label">Share with someone outside the company</span>
+            <span className="spe-grant-label">Share the whole case with someone outside the company</span>
             <div className="spe-segmented" role="tablist" aria-label="Share with">
               <button type="button" role="tab" aria-selected={shareBy === "contact"} className={shareBy === "contact" ? "on" : ""} onClick={() => setShareBy("contact")}>
                 Contact in CRM

@@ -1,6 +1,7 @@
 import * as React from "react";
 import { CaseAccess, CaseAccessPanel } from "./CaseAccessPanel";
 import { CaseFile, CaseFiles, errorMessage, isSignInRequired, SearchHit } from "./CaseDocumentsGraph";
+import { FileSharePanel } from "./FileSharePanel";
 import { ProgressSpinner } from "./ProgressSpinner";
 
 export interface CaseContainer {
@@ -76,6 +77,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
   const [error, setError] = React.useState<string | null>(null);
   const [dragging, setDragging] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState<string | null>(null);
+  const [sharing, setSharing] = React.useState<string | null>(null);
   const transcriptEnd = React.useRef<HTMLDivElement>(null);
   const filePicker = React.useRef<HTMLInputElement>(null);
 
@@ -338,6 +340,16 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                         {canEdit && (
                           <button
                             type="button"
+                            className={`spe-ghost${sharing === file.id ? " on" : ""}`}
+                            disabled={busy}
+                            onClick={() => setSharing(sharing === file.id ? null : file.id)}
+                          >
+                            Share
+                          </button>
+                        )}
+                        {canEdit && (
+                          <button
+                            type="button"
                             className="spe-close"
                             aria-label={`Delete ${file.name}`}
                             title="Delete"
@@ -348,6 +360,9 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                           </button>
                         )}
                       </div>
+                      )}
+                      {sharing === file.id && (
+                        <FileSharePanel containerId={containerId} file={file} files={caseFiles} access={access} onClose={() => setSharing(null)} />
                       )}
                     </li>
                   );
