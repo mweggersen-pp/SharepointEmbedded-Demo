@@ -22,6 +22,7 @@ Case documents for Dynamics 365. Each case gets its own SharePoint Embedded cont
 | `new_EnsureCaseContainer` | `CaseId` |
 | `new_ListCaseAccess` | `CaseId` |
 | `new_GrantCaseContactAccess` | `CaseId`, `ContactId`, `Role` (`reader` or `writer`) |
+| `new_ShareCaseByEmail` | `CaseId`, `Email`, `Role` |
 | `new_UpdateCaseAccess` | `CaseId`, `PermissionId`, `Role` |
 | `new_RemoveCaseAccess` | `CaseId`, `PermissionId` (external contacts only) |
 
