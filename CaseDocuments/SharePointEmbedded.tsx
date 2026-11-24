@@ -1,6 +1,6 @@
 import * as React from "react";
 import { CaseAccess, CaseAccessPanel } from "./CaseAccessPanel";
-import { CaseFile, CaseFiles, isSignInRequired, SearchHit } from "./CaseDocumentsGraph";
+import { CaseFile, CaseFiles, errorMessage, isSignInRequired, SearchHit } from "./CaseDocumentsGraph";
 
 export interface CaseContainer {
   containerId: string;
@@ -48,7 +48,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
       if (isSignInRequired(caught)) {
         setNeedsSignIn(true);
       } else {
-        setError(caught instanceof Error ? caught.message : "The document request failed.");
+        setError(errorMessage(caught, "The document request failed."));
       }
     } finally {
       setBusy(false);

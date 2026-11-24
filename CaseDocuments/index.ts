@@ -1,5 +1,5 @@
 import { IInputs, IOutputs } from "./generated/ManifestTypes";
-import { createCaseFiles, GraphSettings } from "./CaseDocumentsGraph";
+import { createCaseFiles, errorMessage, GraphSettings } from "./CaseDocumentsGraph";
 import { AccessEntry, CaseAccess, ContactChoice } from "./CaseAccessPanel";
 import { CaseContainer, SharePointEmbedded, SharePointEmbeddedProps } from "./SharePointEmbedded";
 import * as React from "react";
@@ -36,7 +36,7 @@ async function callAction(webApi: ComponentFramework.WebApi, operationName: stri
     const body = await response.json();
     return body.Result ? (JSON.parse(body.Result) as unknown) : {};
   } catch (caught) {
-    const message = caught instanceof Error ? caught.message : "The request failed.";
+    const message = errorMessage(caught, "The request failed.");
     if (/not find|Resource not found|does not exist/i.test(message)) {
       throw new Error(`${operationName} is not registered in this environment. Run Register-CaseDocuments.ps1.`);
     }

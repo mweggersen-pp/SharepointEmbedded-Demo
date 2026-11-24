@@ -56,6 +56,17 @@ interface MsalSession {
   settings: GraphSettings;
 }
 
+// Dataverse webAPI rejects with a plain { message } object rather than an Error.
+export function errorMessage(caught: unknown, fallback: string): string {
+  if (caught instanceof Error) {
+    return caught.message;
+  }
+  if (typeof caught === "object" && caught !== null && "message" in caught && typeof caught.message === "string") {
+    return caught.message;
+  }
+  return fallback;
+}
+
 export function isSignInRequired(caught: unknown): boolean {
   return caught instanceof Error && caught.name === "SignInRequired";
 }
