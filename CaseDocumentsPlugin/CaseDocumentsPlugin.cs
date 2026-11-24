@@ -66,6 +66,15 @@ namespace CaseDocumentsPlugin
                             RequiredGuid(context, "ContactId"),
                             RequiredRole(context));
                         break;
+                    case "new_ShareCaseByEmail":
+                        RequireAccess(service, caller, caseId, AccessRights.WriteAccess);
+                        context.OutputParameters["Result"] = GrantGuest(
+                            service,
+                            caseId,
+                            RequiredEmail(context),
+                            null,
+                            RequiredRole(context));
+                        break;
                     case "new_UpdateCaseAccess":
                         RequireAccess(service, caller, caseId, AccessRights.WriteAccess);
                         context.OutputParameters["Result"] = UpdateContact(
@@ -230,12 +239,6 @@ namespace CaseDocumentsPlugin
 
         private static string GrantContact(IOrganizationService service, Guid caseId, Guid contactId, string role)
         {
-            var containerId = StoredContainerId(service, caseId);
-            if (string.IsNullOrWhiteSpace(containerId))
-            {
-                throw new InvalidPluginExecutionException("This case does not have a container yet.");
-            }
-
             var contact = service.Retrieve("contact", contactId, new ColumnSet("fullname", "emailaddress1"));
             var email = (contact.GetAttributeValue<string>("emailaddress1") ?? "").Trim();
             if (email.Length == 0)
@@ -244,15 +247,26 @@ namespace CaseDocumentsPlugin
                     (contact.GetAttributeValue<string>("fullname") ?? "This contact") + " has no email address.");
             }
 
+            return GrantGuest(service, caseId, email, contact.GetAttributeValue<string>("fullname"), role);
+        }
+
+        private static string GrantGuest(IOrganizationService service, Guid caseId, string email, string displayName, string role)
+        {
+            var containerId = StoredContainerId(service, caseId);
+            if (string.IsNullOrWhiteSpace(containerId))
+            {
+                throw new InvalidPluginExecutionException("This case does not have a container yet.");
+            }
+
             var graph = GraphSession.Create(service);
-            var upn = graph.FindOrInviteGuest(email, contact.GetAttributeValue<string>("fullname"));
-            var permissions = graph.ListPermissions(containerId);
-            var current = permissions.FirstOrDefault(p => string.Equals(p.UserPrincipalName, upn, StringComparison.OrdinalIgnoreCase));
-            if (current != null && !current.IsExternal)
+            var upn = graph.FindOrInviteGuest(email, displayName);
+            if (upn.IndexOf("#EXT#", StringComparison.OrdinalIgnoreCase) < 0)
             {
                 throw new InvalidPluginExecutionException(email + " is a colleague. Their access follows Dynamics.");
             }
 
+            var current = graph.ListPermissions(containerId)
+                .FirstOrDefault(p => string.Equals(p.UserPrincipalName, upn, StringComparison.OrdinalIgnoreCase));
             var entry = current == null
                 ? graph.GrantPermission(containerId, upn, role)
                 : graph.UpdatePermission(containerId, current.Id, role);
@@ -355,6 +369,17 @@ namespace CaseDocumentsPlugin
                 throw new InvalidPluginExecutionException(name + " is not a valid id.");
             }
             return parsed;
+        }
+
+        private static string RequiredEmail(IPluginExecutionContext context)
+        {
+            var email = Required(context, "Email");
+            var at = email.IndexOf('@');
+            if (at <= 0 || at != email.LastIndexOf('@') || email.IndexOf('.', at) < 0 || email.IndexOfAny(new[] { ' ', '\'', '"' }) >= 0)
+            {
+                throw new InvalidPluginExecutionException(email + " is not a valid email address.");
+            }
+            return email;
         }
 
         private static string RequiredRole(IPluginExecutionContext context)

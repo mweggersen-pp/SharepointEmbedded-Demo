@@ -1,0 +1,13 @@
+<customapirequestparameter uniquename="Role">
+  <description default="Role">
+    <label description="Role" languagecode="1033" />
+  </description>
+  <displayname default="Role">
+    <label description="Role" languagecode="1033" />
+  </displayname>
+  <iscustomizable>1</iscustomizable>
+  <isoptional>0</isoptional>
+  <logicalentityname />
+  <name>new_ShareCaseByEmail.Role</name>
+  <type>10</type>
+</customapirequestparameter>

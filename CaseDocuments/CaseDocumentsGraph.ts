@@ -32,6 +32,7 @@ export interface CaseFiles {
   preview(containerId: string, itemId: string): Promise<string>;
   download(containerId: string, itemId: string): Promise<string>;
   upload(containerId: string, file: File): Promise<void>;
+  remove(containerId: string, itemId: string): Promise<void>;
   search(containerId: string, query: string): Promise<SearchHit[]>;
   signIn(): Promise<void>;
 }
@@ -87,6 +88,13 @@ function signInRequired(): Error {
   const error = new Error("Sign in to SharePoint to work with the documents on this case.");
   error.name = "SignInRequired";
   return error;
+}
+
+function formatNorwegianDate(iso: string): string {
+  const date = new Date(iso);
+  const day = date.toLocaleDateString("nb-NO", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const time = date.toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" });
+  return `${day} kl. ${time}`;
 }
 
 function sameUrl(left: string, right: string): boolean {
@@ -150,7 +158,7 @@ export function createCaseFiles(loadSettings: () => Promise<GraphSettings>): Cas
     if (!response.ok) {
       throw new Error(await graphError(response));
     }
-    return (await response.json()) as T;
+    return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
   };
 
   const drive = (containerId: string) => `/drives/${encodeURIComponent(containerId)}`;
@@ -165,7 +173,7 @@ export function createCaseFiles(loadSettings: () => Promise<GraphSettings>): Cas
         id: item.id,
         name: item.name,
         size: item.size,
-        modifiedOn: item.lastModifiedDateTime ? new Date(item.lastModifiedDateTime).toLocaleString() : undefined,
+        modifiedOn: item.lastModifiedDateTime ? formatNorwegianDate(item.lastModifiedDateTime) : undefined,
         webUrl: item.webUrl,
       }));
   };
@@ -216,6 +224,10 @@ export function createCaseFiles(loadSettings: () => Promise<GraphSettings>): Cas
           throw new Error(await graphError(response));
         }
       }
+    },
+
+    async remove(containerId, itemId) {
+      await graph<undefined>(`${drive(containerId)}/items/${encodeURIComponent(itemId)}`, { method: "DELETE" });
     },
 
     async search(containerId, query) {

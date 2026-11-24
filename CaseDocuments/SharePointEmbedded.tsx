@@ -1,6 +1,7 @@
 import * as React from "react";
 import { CaseAccess, CaseAccessPanel } from "./CaseAccessPanel";
 import { CaseFile, CaseFiles, errorMessage, isSignInRequired, SearchHit } from "./CaseDocumentsGraph";
+import { ProgressSpinner } from "./ProgressSpinner";
 
 export interface CaseContainer {
   containerId: string;
@@ -26,6 +27,30 @@ interface OpenPreview {
   url: string;
 }
 
+const suggestedQuestions = ["Summarise the documents on this case", "Which deadlines are mentioned?", "Who are the parties involved?"];
+
+const fileKinds: Record<string, string> = {
+  doc: "word",
+  docx: "word",
+  xls: "excel",
+  xlsx: "excel",
+  csv: "excel",
+  ppt: "powerpoint",
+  pptx: "powerpoint",
+  pdf: "pdf",
+  png: "image",
+  jpg: "image",
+  jpeg: "image",
+  gif: "image",
+  msg: "mail",
+  eml: "mail",
+};
+
+function fileBadge(name: string): { label: string; kind: string } {
+  const extension = name.includes(".") ? name.split(".").pop()?.toLowerCase() ?? "" : "";
+  return { label: extension.slice(0, 4).toUpperCase() || "FILE", kind: fileKinds[extension] ?? "other" };
+}
+
 function formatSize(size?: number): string {
   if (size === undefined) {
     return "";
@@ -46,13 +71,16 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
   const [turns, setTurns] = React.useState<CopilotTurn[]>([]);
   const [question, setQuestion] = React.useState("");
   const [needsSignIn, setNeedsSignIn] = React.useState(false);
+  const [progress, setProgress] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const [busy, setBusy] = React.useState(false);
+  const [dragging, setDragging] = React.useState(false);
+  const [confirmDelete, setConfirmDelete] = React.useState<string | null>(null);
   const transcriptEnd = React.useRef<HTMLDivElement>(null);
+  const filePicker = React.useRef<HTMLInputElement>(null);
 
-  const run = async (work: () => Promise<void>) => {
-    setBusy(true);
+  const run = async (label: string, work: () => Promise<void>) => {
+    setProgress(label);
     setError(null);
     setStatus(null);
     try {
@@ -64,10 +92,11 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
         setError(errorMessage(caught, "The document request failed."));
       }
     } finally {
-      setBusy(false);
+      setProgress(null);
     }
   };
 
+  const busy = progress !== null;
   const containerId = container?.containerId ?? "";
   const canEdit = container?.role === "writer";
   const asking = turns.some((turn) => !turn.hits && !turn.error);
@@ -78,12 +107,12 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
     setTurns([]);
     setPreview(null);
     if (caseId) {
-      void run(async () => setContainer(await ensureContainer(caseId)));
+      void run("Preparing the document container", async () => setContainer(await ensureContainer(caseId)));
     }
   }, [caseId]);
 
   const load = () =>
-    run(async () => {
+    run("Loading documents", async () => {
       setNeedsSignIn(false);
       setFiles(await caseFiles.list(containerId));
     });
@@ -98,18 +127,33 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
     transcriptEnd.current?.scrollIntoView({ block: "nearest" });
   }, [turns]);
 
-  const openPreview = (itemId: string, name: string) =>
-    run(async () => setPreview({ name, url: await caseFiles.preview(containerId, itemId) }));
+  const uploadFiles = (chosen: File[]) => {
+    if (chosen.length === 0 || busy) {
+      return;
+    }
+    void run(`Uploading ${chosen.length === 1 ? chosen[0].name : `${chosen.length} files`}`, async () => {
+      for (let index = 0; index < chosen.length; index++) {
+        const file = chosen[index];
+        setProgress(chosen.length === 1 ? `Uploading ${file.name}` : `Uploading ${index + 1} of ${chosen.length}: ${file.name}`);
+        await caseFiles.upload(containerId, file);
+      }
+      setFiles(await caseFiles.list(containerId));
+      setStatus(`Uploaded ${chosen.length} ${chosen.length === 1 ? "file" : "files"}.`);
+    });
+  };
 
-  const ask = () => {
-    const text = question.trim();
-    if (!text || asking) {
+  const openPreview = (itemId: string, name: string) =>
+    run(`Opening ${name}`, async () => setPreview({ name, url: await caseFiles.preview(containerId, itemId) }));
+
+  const ask = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || asking) {
       return;
     }
     const id = Date.now();
     setQuestion("");
-    setTurns((current) => [...current, { id, question: text }]);
-    caseFiles.search(containerId, text).then(
+    setTurns((current) => [...current, { id, question: trimmed }]);
+    caseFiles.search(containerId, trimmed).then(
       (hits) => setTurns((current) => current.map((turn) => (turn.id === id ? { ...turn, hits } : turn))),
       (caught: unknown) => {
         if (isSignInRequired(caught)) {
@@ -124,26 +168,48 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
   if (!caseId) {
     return (
       <div className="spe-docs">
-        <h2>Case documents</h2>
-        <p className="spe-message">Save the case first. A document container is created for each saved case.</p>
+        <div className="spe-empty-card">
+          <span className="spe-empty-icon" aria-hidden="true">🗂️</span>
+          <h3>Save the case to start collecting documents</h3>
+          <p>Each saved case gets its own secure document container.</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="spe-docs">
-      <h2>Case documents</h2>
-      {!container && !error && <p className="spe-message">Opening the document container for this case.</p>}
-      {error && <p className="spe-message spe-error">{error}</p>}
+      <header className="spe-hero">
+        <div>
+          <p className="spe-eyebrow">SharePoint Embedded</p>
+          <h2>Case documents</h2>
+        </div>
+        <div className="spe-hero-chips">
+          {files && (
+            <span className="spe-chip">
+              {files.length} {files.length === 1 ? "file" : "files"}
+            </span>
+          )}
+          {container && <span className="spe-chip">{canEdit ? "You can edit" : "Read only"}</span>}
+        </div>
+      </header>
+
+      {!container && !error && (
+        <div className="spe-stage">
+          <ProgressSpinner size="large" label="Preparing the document container" detail="New cases take a few seconds while SharePoint sets things up." />
+        </div>
+      )}
+      {error && <p className="spe-banner spe-banner-error">{error}</p>}
       {needsSignIn && (
-        <div className="spe-message spe-row">
+        <div className="spe-banner spe-row">
           <span>Sign in to SharePoint to work with the documents on this case.</span>
           <button
             type="button"
             onClick={() =>
-              void run(async () => {
+              void run("Signing in", async () => {
                 await caseFiles.signIn();
-                await load();
+                setNeedsSignIn(false);
+                setFiles(await caseFiles.list(containerId));
               })
             }
           >
@@ -158,54 +224,107 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
             <section className="spe-panel">
               <div className="spe-row">
                 <h3>Files</h3>
-                <div className="spe-actions">
-                  {canEdit && (
-                    <label className={`spe-upload${busy ? " disabled" : ""}`}>
-                      Upload
-                      <input
-                        type="file"
-                        multiple
-                        disabled={busy}
-                        onChange={(event) => {
-                          const chosen = Array.from(event.target.files ?? []);
-                          event.target.value = "";
-                          void run(async () => {
-                            for (const file of chosen) {
-                              setStatus(`Uploading ${file.name}.`);
-                              await caseFiles.upload(containerId, file);
-                            }
-                            setFiles(await caseFiles.list(containerId));
-                            setStatus(`Uploaded ${chosen.length} ${chosen.length === 1 ? "file" : "files"}.`);
-                          });
-                        }}
-                      />
-                    </label>
-                  )}
-                  <button type="button" className="secondary" onClick={() => void load()} disabled={busy}>
-                    Refresh
-                  </button>
-                </div>
+                <button type="button" className="spe-ghost" onClick={() => void load()} disabled={busy}>
+                  ↻ Refresh
+                </button>
               </div>
-              {status && <p className="spe-message">{status}</p>}
+
+              {canEdit && (
+                <div
+                  className={`spe-dropzone${dragging ? " active" : ""}${busy ? " disabled" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => !busy && filePicker.current?.click()}
+                  onKeyDown={(event) => {
+                    if ((event.key === "Enter" || event.key === " ") && !busy) {
+                      event.preventDefault();
+                      filePicker.current?.click();
+                    }
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setDragging(true);
+                  }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setDragging(false);
+                    uploadFiles(Array.from(event.dataTransfer.files));
+                  }}
+                >
+                  {progress?.startsWith("Uploading") ? (
+                    <ProgressSpinner label={progress} />
+                  ) : (
+                    <>
+                      <span className="spe-drop-icon" aria-hidden="true">⬆</span>
+                      <span>
+                        <strong>Drop files here</strong> or click to upload
+                      </span>
+                    </>
+                  )}
+                  <input
+                    ref={filePicker}
+                    type="file"
+                    multiple
+                    hidden
+                    onChange={(event) => {
+                      const chosen = Array.from(event.target.files ?? []);
+                      event.target.value = "";
+                      uploadFiles(chosen);
+                    }}
+                  />
+                </div>
+              )}
+
+              {status && <p className="spe-banner spe-banner-ok">{status}</p>}
+              {progress && !progress.startsWith("Uploading") && container && <ProgressSpinner label={progress} />}
 
               <ul className="spe-files">
-                {(files ?? []).map((file) => (
-                  <li key={file.id} className={preview?.name === file.name ? "selected" : undefined}>
-                    <div className="spe-row">
+                {(files ?? []).map((file) => {
+                  const badge = fileBadge(file.name);
+                  return (
+                    <li key={file.id} className={preview?.name === file.name ? "selected" : undefined}>
+                      <span className={`spe-badge spe-badge-${badge.kind}`}>{badge.label}</span>
                       <div className="spe-file-name">
-                        <strong>{file.name}</strong>
-                        <div>{[formatSize(file.size), file.modifiedOn].filter(Boolean).join(" · ")}</div>
+                        <strong title={file.name}>{file.name}</strong>
+                        <span>{[formatSize(file.size), file.modifiedOn].filter(Boolean).join(" · ")}</span>
                       </div>
+                      {confirmDelete === file.id ? (
+                        <div className="spe-actions spe-confirm">
+                          <span>Delete for everyone?</span>
+                          <button
+                            type="button"
+                            className="spe-danger"
+                            disabled={busy}
+                            onClick={() =>
+                              void run(`Deleting ${file.name}`, async () => {
+                                await caseFiles.remove(containerId, file.id);
+                                setConfirmDelete(null);
+                                if (preview?.name === file.name) {
+                                  setPreview(null);
+                                }
+                                setFiles(await caseFiles.list(containerId));
+                                setStatus(`${file.name} was moved to the container's recycle bin.`);
+                              })
+                            }
+                          >
+                            Delete
+                          </button>
+                          <button type="button" className="spe-ghost" disabled={busy} onClick={() => setConfirmDelete(null)}>
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
                       <div className="spe-actions">
-                        <button type="button" className="secondary" disabled={busy} onClick={() => void openPreview(file.id, file.name)}>
+                        <button type="button" className="spe-ghost" disabled={busy} onClick={() => void openPreview(file.id, file.name)}>
                           Preview
                         </button>
                         <button
                           type="button"
-                          className="secondary"
+                          className="spe-ghost"
                           disabled={busy}
                           onClick={() =>
-                            void run(async () => {
+                            void run(`Preparing ${file.name}`, async () => {
                               // A pop-up opened after an await is blocked; the download URL is served as an attachment.
                               const link = document.createElement("a");
                               link.href = await caseFiles.download(containerId, file.id);
@@ -216,25 +335,45 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                         >
                           Download
                         </button>
+                        {canEdit && (
+                          <button
+                            type="button"
+                            className="spe-close"
+                            aria-label={`Delete ${file.name}`}
+                            title="Delete"
+                            disabled={busy}
+                            onClick={() => setConfirmDelete(file.id)}
+                          >
+                            🗑
+                          </button>
+                        )}
                       </div>
-                    </div>
-                  </li>
-                ))}
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
-              {files === null && busy && <p className="spe-message">Loading documents.</p>}
-              {files?.length === 0 && <p className="spe-message">No documents on this case yet.</p>}
+              {files?.length === 0 && (
+                <div className="spe-empty-card">
+                  <span className="spe-empty-icon" aria-hidden="true">📄</span>
+                  <h3>No documents yet</h3>
+                  <p>{canEdit ? "Drop the first file above to get started." : "Documents added to this case will show up here."}</p>
+                </div>
+              )}
             </section>
 
             {preview && (
-              <section className="spe-panel">
-                <div className="spe-row">
-                  <h3 className="spe-file-name">{preview.name}</h3>
+              <section className="spe-panel spe-preview-panel">
+                <div className="spe-preview-bar">
+                  <strong className="spe-file-name" title={preview.name}>
+                    {preview.name}
+                  </strong>
                   <div className="spe-actions">
-                    <a className="spe-link" href={preview.url} target="_blank" rel="noopener noreferrer">
-                      Open in new tab
+                    <a className="spe-preview-link" href={preview.url} target="_blank" rel="noopener noreferrer">
+                      Open in new tab ↗
                     </a>
-                    <button type="button" className="secondary" onClick={() => setPreview(null)}>
-                      Close preview
+                    <button type="button" className="spe-close" aria-label="Close preview" onClick={() => setPreview(null)}>
+                      ✕
                     </button>
                   </div>
                 </div>
@@ -248,23 +387,41 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
           </div>
 
           <section className="spe-panel spe-copilot">
-            <h3>Ask Copilot</h3>
+            <div className="spe-copilot-head">
+              <span className="spe-sparkle" aria-hidden="true">✦</span>
+              <div>
+                <h3>Ask Copilot</h3>
+                <p>Answers come from this case's documents only.</p>
+              </div>
+            </div>
             <div className="spe-transcript">
               {turns.length === 0 && (
-                <p className="spe-hint">Ask a question about the documents on this case. Copilot answers with the passages that match.</p>
+                <div className="spe-suggestions">
+                  {suggestedQuestions.map((suggestion) => (
+                    <button key={suggestion} type="button" className="spe-suggestion" onClick={() => ask(suggestion)}>
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
               )}
               {turns.map((turn) => (
                 <div key={turn.id} className="spe-turn">
                   <p className="spe-bubble spe-question">{turn.question}</p>
                   <div className="spe-bubble spe-answer">
-                    {!turn.hits && !turn.error && <p>Searching the case documents…</p>}
+                    {!turn.hits && !turn.error && (
+                      <span className="spe-typing" aria-label="Copilot is searching">
+                        <span />
+                        <span />
+                        <span />
+                      </span>
+                    )}
                     {turn.error && <p className="spe-error-text">{turn.error}</p>}
                     {turn.hits?.length === 0 && <p>I found nothing about that in this case's documents.</p>}
                     {turn.hits?.map((hit, index) => (
                       <div key={`${hit.itemId}-${index}`} className="spe-passage">
-                        <p className="spe-extract">{hit.text || "This file matches, but has no text passage."}</p>
+                        <p>{hit.text || "This file matches, but has no text passage."}</p>
                         <button type="button" className="spe-source" onClick={() => void openPreview(hit.itemId, hit.name)}>
-                          {hit.name}
+                          📎 {hit.name}
                         </button>
                       </div>
                     ))}
@@ -277,24 +434,24 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
               className="spe-ask"
               onSubmit={(event) => {
                 event.preventDefault();
-                ask();
+                ask(question);
               }}
             >
               <textarea
                 aria-label="Question for Copilot"
                 value={question}
                 rows={2}
-                placeholder="Ask about this case's documents"
+                placeholder="Ask about this case's documents…"
                 onChange={(event) => setQuestion(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
-                    ask();
+                    ask(question);
                   }
                 }}
               />
-              <button type="submit" disabled={asking || !question.trim()}>
-                Ask
+              <button type="submit" className="spe-send" aria-label="Ask Copilot" disabled={asking || !question.trim()}>
+                ➤
               </button>
             </form>
           </section>

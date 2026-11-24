@@ -95,6 +95,9 @@ export class CaseDocuments implements ComponentFramework.ReactControl<IInputs, I
       async grant(caseId, contactId, role) {
         await callAction(webApi, "new_GrantCaseContactAccess", { CaseId: caseId, ContactId: contactId, Role: role });
       },
+      async shareByEmail(caseId, email, role) {
+        await callAction(webApi, "new_ShareCaseByEmail", { CaseId: caseId, Email: email, Role: role });
+      },
       async update(caseId, permissionId, role) {
         await callAction(webApi, "new_UpdateCaseAccess", { CaseId: caseId, PermissionId: permissionId, Role: role });
       },
