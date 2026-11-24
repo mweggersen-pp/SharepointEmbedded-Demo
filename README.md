@@ -33,7 +33,7 @@ pac pcf push --publisher-prefix new
 
 ## What the control calls
 
-The control does not call Microsoft Graph from the browser. It calls four unbound Dataverse custom APIs. Each one returns a string output parameter named `Result` containing JSON.
+The control does not call Microsoft Graph from the browser. It calls five unbound Dataverse custom APIs. Each one returns a string output parameter named `Result` containing JSON.
 
 | Action | Input | `Result` JSON |
 |---|---|---|
@@ -43,8 +43,10 @@ The control does not call Microsoft Graph from the browser. It calls four unboun
 | `new_DownloadCaseDocument` | `ContainerId`, `ItemId` | `{ "downloadUrl" }` |
 | `new_SearchCaseDocuments` | `ContainerId`, `Query` | `{ "hits": [{ "itemId", "name", "webUrl", "text" }] }` |
 
-List, preview, and download use Microsoft Graph on the case container. Copilot search calls `POST /copilot/retrieval` with `dataSource` `sharePointEmbedded`, container type `332fda6e-b080-4793-9b64-a7c91166f03d`, and the case container id. Discoverability is currently off on `kunde-demo`. Copilot search returns hits only after discoverability is enabled for that container type.
+List, preview, and download use Microsoft Graph on the case container with an app-only token. Search calls Microsoft Search (`/beta/search/query`) scoped to the case container. Microsoft Search and the Copilot retrieval API accept only delegated tokens, so search does not work from this plugin yet.
 
 The owning app is `20201f3e-941f-4590-b09a-0d7623cb3844`. The plugin reads `new_containertypeid`, `new_owningappid`, `new_tenantid`, and `new_graphclientsecret`.
 
-Saving a case creates its container. Opening the documents tab on an older case creates the container then. The container id is written to `new_sharepointcontainer`. `Register-CaseDocuments.ps1` builds the plugin, registers the five actions, and publishes the control to mpcustomdemo.
+Opening the documents tab on a saved case creates its container if it does not have one. The container id is written to `new_sharepointcontainer`.
+
+`CaseDocumentsActions` is a Dataverse solution project that holds the signed plugin and the five custom APIs. `Register-CaseDocuments.ps1` copies the publisher from `SharePointEmbededDemo`, builds that project, imports it, and publishes the control to mpcustomdemo. It needs the .NET SDK and a `pac` profile signed in to `https://mpcustomdemo2.crm19.dynamics.com`.

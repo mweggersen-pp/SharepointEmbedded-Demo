@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PluginAssembly FullName="CaseDocumentsPlugin, Version=1.0.0.0, Culture=neutral, PublicKeyToken=286b93ec10c4a836" PluginAssemblyId="c3a1d0e2-7b44-4f0a-9c31-6a0e5d2b91f4" CustomizationLevel="1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <IsolationMode>2</IsolationMode>
+  <SourceType>0</SourceType>
+  <IntroducedVersion>1.0</IntroducedVersion>
+  <FileName>/PluginAssemblies/CaseDocumentsPlugin-c3a1d0e2-7b44-4f0a-9c31-6a0e5d2b91f4/CaseDocumentsPlugin.dll</FileName>
+  <PluginTypes>
+    <PluginType AssemblyQualifiedName="CaseDocumentsPlugin.CaseDocumentsPlugin, CaseDocumentsPlugin, Version=1.0.0.0, Culture=neutral, PublicKeyToken=286b93ec10c4a836" PluginTypeId="b7e2a1c4-5d33-4a18-8f60-2c9b0e4d71aa" Name="CaseDocumentsPlugin.CaseDocumentsPlugin">
+      <FriendlyName>CaseDocumentsPlugin</FriendlyName>
+    </PluginType>
+  </PluginTypes>
+</PluginAssembly>
