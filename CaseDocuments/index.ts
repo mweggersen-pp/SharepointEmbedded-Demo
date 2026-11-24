@@ -6,6 +6,18 @@ interface ActionResult {
   Result?: string;
 }
 
+interface DataverseActionResponse {
+  json(): Promise<ActionResult>;
+}
+
+interface DataverseActionClient {
+  execute(request: object): Promise<DataverseActionResponse>;
+}
+
+function dataverseActions(webApi: ComponentFramework.WebApi): DataverseActionClient {
+  return webApi as unknown as DataverseActionClient;
+}
+
 function serviceMessage(caught: unknown): Error {
   const message = caught instanceof Error ? caught.message : "The document request failed.";
   if (/not find|not a valid|Resource not found|does not exist/i.test(message)) {
@@ -37,8 +49,8 @@ async function callAction(
   };
 
   try {
-    const response = await context.webAPI.execute(request);
-    const body = (await response.json()) as ActionResult;
+    const response = await dataverseActions(context.webAPI).execute(request);
+    const body = await response.json();
     if (!body.Result) {
       return {};
     }
