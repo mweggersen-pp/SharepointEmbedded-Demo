@@ -18,16 +18,13 @@ if ($who -notmatch "mpcustomdemo2") {
     throw "pac is not signed in to $org. Run: pac auth create --environment $org"
 }
 
-$work = Join-Path ([System.IO.Path]::GetTempPath()) "case-documents-actions"
-if (Test-Path $work) {
-    Remove-Item $work -Recurse -Force
-}
+$work = Join-Path ([System.IO.Path]::GetTempPath()) ("case-documents-actions-" + (Get-Date -Format "yyyyMMddHHmmss"))
 New-Item -ItemType Directory -Path $work | Out-Null
 
 Write-Host "Building the plugin..."
 $pluginProject = Join-Path (Join-Path $root "CaseDocumentsPlugin") "CaseDocumentsPlugin.csproj"
 $pluginOutput = Join-Path $work "plugin"
-Invoke-Checked "dotnet" @("build", $pluginProject, "-c", "Release", "-o", $pluginOutput)
+Invoke-Checked "dotnet" @("build", $pluginProject, "-c", "Release", "-o", $pluginOutput, "--disable-build-servers")
 
 $solutionFolder = Join-Path $work "solution"
 Copy-Item (Join-Path (Join-Path $root "CaseDocumentsActions") "src") $solutionFolder -Recurse
