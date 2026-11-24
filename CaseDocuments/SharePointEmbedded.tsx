@@ -125,7 +125,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ containe
           {hits.map((hit, index) => (
             <li key={`${hit.webUrl ?? hit.itemId ?? "hit"}-${index}`}>
               <div className="spe-row">
-                <strong>{hit.name || hit.webUrl || "Matching passage"}</strong>
+                <strong>{hit.name ?? hit.webUrl ?? "Matching passage"}</strong>
                 {hit.itemId && (
                   <button
                     type="button"
@@ -133,7 +133,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ containe
                     disabled={busy}
                     onClick={() =>
                       void run(async () => {
-                        setPreviewUrl(await client.preview(containerId, hit.itemId as string));
+                        setPreviewUrl(await client.preview(containerId, hit.itemId!));
                       })
                     }
                   >

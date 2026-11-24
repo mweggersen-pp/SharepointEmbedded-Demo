@@ -37,7 +37,7 @@ async function callAction(
   };
 
   try {
-    const response = await context.webAPI.execute(request as unknown as ComponentFramework.WebApi.ODataContract);
+    const response = await context.webAPI.execute(request);
     const body = (await response.json()) as ActionResult;
     if (!body.Result) {
       return {};
