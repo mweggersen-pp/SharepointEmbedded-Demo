@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 $org = "https://mpcustomdemo2.crm19.dynamics.com"
-$solutionName = "SharePoint-Embeded-Demo"
+$solutionName = "SharePointEmbededDemo"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $project = Join-Path $root "CaseDocumentsPlugin"
 $dll = Join-Path $project "bin\Release\net462\CaseDocumentsPlugin.dll"
