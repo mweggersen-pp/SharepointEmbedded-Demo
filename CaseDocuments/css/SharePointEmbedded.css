@@ -205,6 +205,23 @@
   box-shadow: none;
 }
 
+.spe-docs a.spe-link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  color: #fff;
+  background: linear-gradient(135deg, var(--spe-accent), var(--spe-accent-2));
+}
+
+.spe-docs a.spe-link-button:hover {
+  box-shadow: 0 4px 12px rgba(91, 61, 245, 0.3);
+}
+
 .spe-docs button.spe-danger {
   background: linear-gradient(135deg, #e5484d, #b4233a);
 }

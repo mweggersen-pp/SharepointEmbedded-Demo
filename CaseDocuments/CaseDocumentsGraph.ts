@@ -282,7 +282,8 @@ export function createCaseFiles(loadSettings: () => Promise<GraphSettings>): Cas
     async share(containerId, itemId, email, role) {
       await graph<unknown>(`${drive(containerId)}/items/${encodeURIComponent(itemId)}/invite`, {
         method: "POST",
-        body: JSON.stringify({ recipients: [{ email }], roles: [role], requireSignIn: true, sendInvitation: true }),
+        // SharePoint Embedded rejects invites that ask Microsoft to send the sharing email.
+        body: JSON.stringify({ recipients: [{ email }], roles: [role], requireSignIn: true, sendInvitation: false }),
       });
     },
 
