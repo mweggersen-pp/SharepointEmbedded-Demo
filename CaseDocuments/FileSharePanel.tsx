@@ -14,11 +14,6 @@ interface FileSharePanelProps {
 
 const validEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-function linkEmail(file: CaseFile, to: string): string {
-  const body = `Hi,\n\nI have shared ${file.name} with you:\n${file.webUrl ?? ""}\n\nSign in as ${to} to open it.`;
-  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(file.name)}&body=${encodeURIComponent(body)}`;
-}
-
 const wait = (seconds: number) => new Promise<void>((resolve) => window.setTimeout(resolve, seconds * 1000));
 
 function FileRoleSelect({ value, disabled, onChange }: { value: FileShareRole; disabled: boolean; onChange: (role: FileShareRole) => void }) {
@@ -35,14 +30,14 @@ export const FileSharePanel: React.FC<FileSharePanelProps> = ({ caseId, containe
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState<FileShareRole>("read");
   const [error, setError] = React.useState<string | null>(null);
-  const [sharedWith, setSharedWith] = React.useState<string | null>(null);
+  const [status, setStatus] = React.useState<string | null>(null);
   const [copiedFor, setCopiedFor] = React.useState<string | null>(null);
   const [progress, setProgress] = React.useState<string | null>(null);
 
   const run = async (label: string, work: () => Promise<void>) => {
     setProgress(label);
     setError(null);
-    setSharedWith(null);
+    setStatus(null);
     try {
       await work();
       setShares(await files.listShares(containerId, file.id));
@@ -102,7 +97,13 @@ export const FileSharePanel: React.FC<FileSharePanelProps> = ({ caseId, containe
         }
       }
       setEmail("");
-      setSharedWith(address);
+      setProgress(`Emailing the link to ${address}`);
+      try {
+        await files.emailLink(address, file);
+        setStatus(`${address} can now open this file and got an email with the link.`);
+      } catch (caught) {
+        setError(`${address} can open the file, but the email was not sent: ${errorMessage(caught, "unknown error")} Use Copy link instead.`);
+      }
     });
 
   const address = email.trim();
@@ -116,21 +117,7 @@ export const FileSharePanel: React.FC<FileSharePanelProps> = ({ caseId, containe
         </button>
       </div>
       {error && <p className="spe-banner spe-banner-error">{error}</p>}
-      {sharedWith && (
-        <div className="spe-banner spe-banner-ok spe-row">
-          <span>{sharedWith} can now open this file. Send them the link:</span>
-          <div className="spe-actions">
-            <a className="spe-link-button" href={linkEmail(file, sharedWith)}>
-              Email link
-            </a>
-            {file.webUrl && (
-              <button type="button" className="spe-ghost" onClick={() => void copyLink("shared")}>
-                {copiedFor === "shared" ? "Copied ✓" : "Copy link"}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {status && <p className="spe-banner spe-banner-ok">{status}</p>}
       {progress && <ProgressSpinner label={progress} />}
 
       {shares && shares.length > 0 && (
@@ -195,7 +182,7 @@ export const FileSharePanel: React.FC<FileSharePanelProps> = ({ caseId, containe
           Share file
         </button>
       </form>
-      <span className="spe-hint">They can open this file only, signed in as that email address. Microsoft does not email them, so send the link yourself.</span>
+      <span className="spe-hint">They get an email from you with a link to this file only, and sign in as that email address to open it.</span>
     </div>
   );
 };

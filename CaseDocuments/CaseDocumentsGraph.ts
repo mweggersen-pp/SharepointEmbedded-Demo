@@ -2,6 +2,8 @@ import { PublicClientApplication } from "@azure/msal-browser";
 
 const graphRoot = "https://graph.microsoft.com/v1.0";
 const scopes = ["https://graph.microsoft.com/FileStorageContainer.Selected"];
+// Requested only when emailing, so the rest of the control works before Mail.Send is approved.
+const mailScopes = ["https://graph.microsoft.com/Mail.Send"];
 const simpleUploadLimit = 4 * 1024 * 1024;
 // Upload session chunks must be multiples of 320 KiB.
 const uploadChunkSize = 320 * 1024 * 16;
@@ -47,6 +49,7 @@ export interface CaseFiles {
   share(containerId: string, itemId: string, email: string, role: FileShareRole): Promise<void>;
   updateShare(containerId: string, itemId: string, permissionId: string, role: FileShareRole): Promise<void>;
   unshare(containerId: string, itemId: string, permissionId: string): Promise<void>;
+  emailLink(to: string, file: CaseFile): Promise<void>;
   search(containerId: string, query: string): Promise<SearchHit[]>;
   signIn(): Promise<void>;
 }
@@ -142,6 +145,10 @@ function formatNorwegianDate(iso: string): string {
   return `${day} kl. ${time}`;
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 function sameUrl(left: string, right: string): boolean {
   return decodeURIComponent(left).toLowerCase() === decodeURIComponent(right).toLowerCase();
 }
@@ -182,22 +189,29 @@ export function createCaseFiles(loadSettings: () => Promise<GraphSettings>): Cas
     return pending;
   };
 
-  const token = async (): Promise<string> => {
+  const token = async (requested: string[]): Promise<string> => {
     const { app, settings } = await start();
     const hint = settings.loginHint.toLowerCase();
     const account = app.getAllAccounts().find((candidate) => candidate.username.toLowerCase() === hint);
     try {
       const result = account
-        ? await app.acquireTokenSilent({ scopes, account })
-        : await app.ssoSilent({ scopes, loginHint: settings.loginHint });
+        ? await app.acquireTokenSilent({ scopes: requested, account })
+        : await app.ssoSilent({ scopes: requested, loginHint: settings.loginHint });
       return result.accessToken;
     } catch {
-      throw signInRequired();
+      if (requested !== mailScopes) {
+        throw signInRequired();
+      }
+    }
+    try {
+      return (await app.acquireTokenPopup({ scopes: mailScopes, loginHint: settings.loginHint })).accessToken;
+    } catch {
+      throw new Error("Sending email needs the Mail.Send permission on the app registration, approved for your account.");
     }
   };
 
-  const graph = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
-    const headers: Record<string, string> = { Authorization: `Bearer ${await token()}` };
+  const graph = async <T>(path: string, init: RequestInit = {}, requested = scopes): Promise<T> => {
+    const headers: Record<string, string> = { Authorization: `Bearer ${await token(requested)}` };
     if (typeof init.body === "string") {
       headers["Content-Type"] = "application/json";
     }
@@ -295,6 +309,24 @@ export function createCaseFiles(loadSettings: () => Promise<GraphSettings>): Cas
         `${drive(containerId)}/items/${encodeURIComponent(itemId)}/permissions/${encodeURIComponent(permissionId)}`,
         { method: "PATCH", body: JSON.stringify({ roles: [role] }) }
       );
+    },
+
+    async emailLink(to, file) {
+      if (!file.webUrl) {
+        throw new Error("SharePoint did not return a link for this file.");
+      }
+      const name = escapeHtml(file.name);
+      const content =
+        `<p>Hi,</p><p>I have shared <strong>${name}</strong> with you.</p>` +
+        `<p><a href="${escapeHtml(file.webUrl)}">Open ${name}</a></p>` +
+        `<p>Sign in as ${escapeHtml(to)} to open it.</p>`;
+      await graph<undefined>("/me/sendMail", {
+        method: "POST",
+        body: JSON.stringify({
+          message: { subject: `${file.name} has been shared with you`, body: { contentType: "HTML", content }, toRecipients: [{ emailAddress: { address: to } }] },
+          saveToSentItems: true,
+        }),
+      }, mailScopes);
     },
 
     async unshare(containerId, itemId, permissionId) {
