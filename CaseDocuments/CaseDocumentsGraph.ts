@@ -147,8 +147,10 @@ function sameUrl(left: string, right: string): boolean {
 
 async function graphError(response: Response): Promise<string> {
   try {
-    const body = (await response.json()) as { error?: { message?: string } };
-    return body.error?.message ?? `Microsoft Graph returned ${response.status}.`;
+    const body = (await response.json()) as { error?: { message?: string; code?: string; innerError?: { code?: string } } };
+    const message = body.error?.message ?? `Microsoft Graph returned ${response.status}.`;
+    const codes = [body.error?.code, body.error?.innerError?.code].filter(Boolean).join(" / ");
+    return codes ? `${message} (${response.status} ${codes})` : message;
   } catch {
     return `Microsoft Graph returned ${response.status}.`;
   }
