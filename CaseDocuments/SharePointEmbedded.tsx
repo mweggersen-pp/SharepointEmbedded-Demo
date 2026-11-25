@@ -386,7 +386,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                         </div>
                       )}
                       {sharing === file.id && (
-                        <FileSharePanel containerId={containerId} file={file} files={caseFiles} access={access} onClose={() => setSharing(null)} />
+                        <FileSharePanel caseId={caseId} containerId={containerId} file={file} files={caseFiles} access={access} onClose={() => setSharing(null)} />
                       )}
                     </li>
                   );

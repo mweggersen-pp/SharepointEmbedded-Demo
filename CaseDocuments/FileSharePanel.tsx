@@ -4,6 +4,7 @@ import { CaseFile, CaseFiles, errorMessage, FileShare, FileShareRole } from "./C
 import { ProgressSpinner } from "./ProgressSpinner";
 
 interface FileSharePanelProps {
+  caseId: string;
   containerId: string;
   file: CaseFile;
   files: CaseFiles;
@@ -18,7 +19,9 @@ function linkEmail(file: CaseFile, to: string): string {
   return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(file.name)}&body=${encodeURIComponent(body)}`;
 }
 
-export const FileSharePanel: React.FC<FileSharePanelProps> = ({ containerId, file, files, access, onClose }) => {
+const wait = (seconds: number) => new Promise<void>((resolve) => window.setTimeout(resolve, seconds * 1000));
+
+export const FileSharePanel: React.FC<FileSharePanelProps> = ({ caseId, containerId, file, files, access, onClose }) => {
   const [shares, setShares] = React.useState<FileShare[] | null>(null);
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState<FileShareRole>("read");
@@ -146,7 +149,20 @@ export const FileSharePanel: React.FC<FileSharePanelProps> = ({ containerId, fil
             return;
           }
           void run(`Sharing ${file.name}`, async () => {
-            await files.share(containerId, file.id, address, role);
+            const created = await access.ensureGuest(caseId, address);
+            // SharePoint sees a brand-new guest account only after Entra replicates it.
+            for (let attempt = 1; ; attempt++) {
+              try {
+                await files.share(containerId, file.id, address, role);
+                break;
+              } catch (caught) {
+                if (!created || attempt === 5) {
+                  throw caught;
+                }
+                setProgress(`Setting up a guest account for ${address}`);
+                await wait(5 * attempt);
+              }
+            }
             setEmail("");
             setCopied(false);
             setSharedWith(address);

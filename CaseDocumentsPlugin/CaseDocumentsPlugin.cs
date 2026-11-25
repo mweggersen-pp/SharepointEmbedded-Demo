@@ -75,6 +75,10 @@ namespace CaseDocumentsPlugin
                             null,
                             RequiredRole(context));
                         break;
+                    case "new_EnsureCaseGuest":
+                        RequireAccess(service, caller, caseId, AccessRights.WriteAccess);
+                        context.OutputParameters["Result"] = EnsureGuest(service, RequiredEmail(context));
+                        break;
                     case "new_UpdateCaseAccess":
                         RequireAccess(service, caller, caseId, AccessRights.WriteAccess);
                         context.OutputParameters["Result"] = UpdateContact(
@@ -259,7 +263,8 @@ namespace CaseDocumentsPlugin
             }
 
             var graph = GraphSession.Create(service);
-            var upn = graph.FindOrInviteGuest(email, displayName);
+            bool created;
+            var upn = graph.FindOrInviteGuest(email, displayName, true, out created);
             if (upn.IndexOf("#EXT#", StringComparison.OrdinalIgnoreCase) < 0)
             {
                 throw new InvalidPluginExecutionException(email + " is a colleague. Their access follows Dynamics.");
@@ -271,6 +276,13 @@ namespace CaseDocumentsPlugin
                 ? graph.GrantPermission(containerId, upn, role)
                 : graph.UpdatePermission(containerId, current.Id, role);
             return "{\"entry\":" + EntryJson(entry) + "}";
+        }
+
+        private static string EnsureGuest(IOrganizationService service, string email)
+        {
+            bool created;
+            GraphSession.Create(service).FindOrInviteGuest(email, null, false, out created);
+            return "{\"created\":" + (created ? "true" : "false") + "}";
         }
 
         private static string UpdateContact(IOrganizationService service, Guid caseId, string permissionId, string role)
@@ -494,8 +506,9 @@ namespace CaseDocumentsPlugin
             Send(HttpMethod.Delete, ContainerUrl(containerId) + "/permissions/" + Uri.EscapeDataString(permissionId), null);
         }
 
-        public string FindOrInviteGuest(string email, string displayName)
+        public string FindOrInviteGuest(string email, string displayName, bool sendInvitation, out bool created)
         {
+            created = false;
             var filter = Uri.EscapeDataString("mail eq '" + email.Replace("'", "''") + "'");
             var found = JsonText.Deserialize<UserPage>(Send(HttpMethod.Get, Graph + "/users?$filter=" + filter + "&$select=id,userPrincipalName", null));
             var existing = found == null || found.Value == null ? null : found.Value.FirstOrDefault();
@@ -506,7 +519,7 @@ namespace CaseDocumentsPlugin
 
             var payload = "{\"invitedUserEmailAddress\":\"" + JsonText.Escape(email)
                 + "\",\"invitedUserDisplayName\":\"" + JsonText.Escape(displayName ?? email)
-                + "\",\"inviteRedirectUrl\":\"https://myapps.microsoft.com\",\"sendInvitationMessage\":true}";
+                + "\",\"inviteRedirectUrl\":\"https://myapps.microsoft.com\",\"sendInvitationMessage\":" + (sendInvitation ? "true" : "false") + "}";
             var invitation = JsonText.Deserialize<InvitationResponse>(Send(HttpMethod.Post, Graph + "/invitations", payload));
             if (invitation == null || invitation.InvitedUser == null || string.IsNullOrWhiteSpace(invitation.InvitedUser.Id))
             {
@@ -518,6 +531,7 @@ namespace CaseDocumentsPlugin
             {
                 throw new InvalidPluginExecutionException("Could not read the guest account for " + email + ".");
             }
+            created = true;
             return user.UserPrincipalName;
         }
 

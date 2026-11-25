@@ -23,6 +23,7 @@ export interface CaseAccess {
   pickContact(): Promise<ContactChoice | null>;
   grant(caseId: string, contactId: string, role: ContactRole): Promise<void>;
   shareByEmail(caseId: string, email: string, role: ContactRole): Promise<void>;
+  ensureGuest(caseId: string, email: string): Promise<boolean>;
   update(caseId: string, permissionId: string, role: ContactRole): Promise<void>;
   remove(caseId: string, permissionId: string): Promise<void>;
 }
