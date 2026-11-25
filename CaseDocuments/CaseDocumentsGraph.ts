@@ -219,7 +219,9 @@ export function createCaseFiles(loadSettings: () => Promise<GraphSettings>): Cas
     if (!response.ok) {
       throw new Error(await graphError(response));
     }
-    return response.status === 204 ? (undefined as T) : ((await response.json()) as T);
+    // Some calls, such as sendMail, answer 202 with an empty body.
+    const text = await response.text();
+    return (text ? JSON.parse(text) : undefined) as T;
   };
 
   const drive = (containerId: string) => `/drives/${encodeURIComponent(containerId)}`;
