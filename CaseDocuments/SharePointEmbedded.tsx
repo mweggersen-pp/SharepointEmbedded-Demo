@@ -1,5 +1,6 @@
 import * as React from "react";
 import { CaseAccess, CaseAccessPanel } from "./CaseAccessPanel";
+import { CaseText, CaseTextContext } from "./case-documents-text";
 import { CaseFile, CaseFiles, errorMessage, isSignInRequired, SearchHit } from "./CaseDocumentsGraph";
 import { FileSharePanel } from "./FileSharePanel";
 import { ProgressSpinner } from "./ProgressSpinner";
@@ -14,6 +15,7 @@ export interface SharePointEmbeddedProps {
   files: CaseFiles;
   access: CaseAccess;
   ensureContainer: (caseId: string) => Promise<CaseContainer>;
+  text: CaseText;
 }
 
 interface CopilotTurn {
@@ -28,8 +30,6 @@ interface OpenPreview {
   name: string;
   url: string;
 }
-
-const suggestedQuestions = ["Summarise the documents on this case", "Which deadlines are mentioned?", "Who are the parties involved?"];
 
 const fileKinds: Record<string, string> = {
   doc: "word",
@@ -66,7 +66,7 @@ function formatSize(size?: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, files: caseFiles, access, ensureContainer }) => {
+export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, files: caseFiles, access, ensureContainer, text: t }) => {
   const [container, setContainer] = React.useState<CaseContainer | null>(null);
   const [files, setFiles] = React.useState<CaseFile[] | null>(null);
   const [preview, setPreview] = React.useState<OpenPreview | null>(null);
@@ -74,6 +74,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
   const [question, setQuestion] = React.useState("");
   const [needsSignIn, setNeedsSignIn] = React.useState(false);
   const [progress, setProgress] = React.useState<string | null>(null);
+  const [uploading, setUploading] = React.useState(false);
   const [status, setStatus] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [dragging, setDragging] = React.useState(false);
@@ -93,7 +94,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
       if (isSignInRequired(caught)) {
         setNeedsSignIn(true);
       } else {
-        setError(errorMessage(caught, "The document request failed."));
+        setError(errorMessage(caught, t.documentRequestFailed));
       }
     } finally {
       setProgress(null);
@@ -111,12 +112,12 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
     setTurns([]);
     setPreview(null);
     if (caseId) {
-      void run("Preparing the document container", async () => setContainer(await ensureContainer(caseId)));
+      void run(t.preparingContainer, async () => setContainer(await ensureContainer(caseId)));
     }
   }, [caseId]);
 
   const load = () =>
-    run("Loading documents", async () => {
+    run(t.loadingDocuments, async () => {
       setNeedsSignIn(false);
       setFiles(await caseFiles.list(containerId));
     });
@@ -139,19 +140,24 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
     if (chosen.length === 0 || busy) {
       return;
     }
-    void run(`Uploading ${chosen.length === 1 ? chosen[0].name : `${chosen.length} files`}`, async () => {
-      for (let index = 0; index < chosen.length; index++) {
-        const file = chosen[index];
-        setProgress(chosen.length === 1 ? `Uploading ${file.name}` : `Uploading ${index + 1} of ${chosen.length}: ${file.name}`);
-        await caseFiles.upload(containerId, file);
+    setUploading(true);
+    void run(t.uploadingLabel(chosen.length === 1 ? chosen[0].name : t.uploadingCount(chosen.length)), async () => {
+      try {
+        for (let index = 0; index < chosen.length; index++) {
+          const file = chosen[index];
+          setProgress(chosen.length === 1 ? t.uploadingLabel(file.name) : t.uploadingOneOf(index + 1, chosen.length, file.name));
+          await caseFiles.upload(containerId, file);
+        }
+        setFiles(await caseFiles.list(containerId));
+        setStatus(t.uploaded(chosen.length));
+      } finally {
+        setUploading(false);
       }
-      setFiles(await caseFiles.list(containerId));
-      setStatus(`Uploaded ${chosen.length} ${chosen.length === 1 ? "file" : "files"}.`);
     });
   };
 
   const openPreview = (itemId: string, name: string) =>
-    run(`Opening ${name}`, async () => setPreview({ itemId, name, url: await caseFiles.preview(containerId, itemId) }));
+    run(t.opening(name), async () => setPreview({ itemId, name, url: await caseFiles.preview(containerId, itemId) }));
 
   const ask = async (text: string) => {
     const trimmed = text.trim();
@@ -168,60 +174,63 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
       if (isSignInRequired(caught)) {
         setNeedsSignIn(true);
       }
-      const message = errorMessage(caught, "Copilot could not answer.");
+      const message = errorMessage(caught, t.copilotFailed);
       setTurns((current) => current.map((turn) => (turn.id === id ? { ...turn, error: message } : turn)));
     }
   };
 
   if (!caseId) {
     return (
+      <CaseTextContext.Provider value={t}>
       <div className="spe-docs">
         <div className="spe-empty-card">
           <span className="spe-empty-icon" aria-hidden="true">🗂️</span>
-          <h3>Save the case to start collecting documents</h3>
-          <p>Each saved case gets its own secure document container.</p>
+          <h3>{t.saveCaseTitle}</h3>
+          <p>{t.saveCaseDetail}</p>
         </div>
       </div>
+      </CaseTextContext.Provider>
     );
   }
 
   return (
+    <CaseTextContext.Provider value={t}>
     <div className="spe-docs">
       <header className="spe-hero">
         <div>
           <p className="spe-eyebrow">SharePoint Embedded</p>
-          <h2>Case documents</h2>
+          <h2>{t.heading}</h2>
         </div>
         <div className="spe-hero-chips">
           {files && (
             <span className="spe-chip">
-              {files.length} {files.length === 1 ? "file" : "files"}
+              {t.fileCount(files.length)}
             </span>
           )}
-          {container && <span className="spe-chip">{canEdit ? "You can edit" : "Read only"}</span>}
+          {container && <span className="spe-chip">{canEdit ? t.canEdit : t.readOnly}</span>}
         </div>
       </header>
 
       {!container && !error && (
         <div className="spe-stage">
-          <ProgressSpinner size="large" label="Preparing the document container" detail="New cases take a few seconds while SharePoint sets things up." />
+          <ProgressSpinner size="large" label={t.preparingContainer} detail={t.preparingContainerDetail} />
         </div>
       )}
       {error && <p className="spe-banner spe-banner-error">{error}</p>}
       {needsSignIn && (
         <div className="spe-banner spe-row">
-          <span>Sign in to SharePoint to work with the documents on this case.</span>
+          <span>{t.signInPrompt}</span>
           <button
             type="button"
             onClick={() =>
-              void run("Signing in", async () => {
+              void run(t.signingIn, async () => {
                 await caseFiles.signIn();
                 setNeedsSignIn(false);
                 setFiles(await caseFiles.list(containerId));
               })
             }
           >
-            Sign in
+            {t.signIn}
           </button>
         </div>
       )}
@@ -231,9 +240,9 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
           <div className="spe-main">
             <section className="spe-panel">
               <div className="spe-row">
-                <h3>Files</h3>
+                <h3>{t.files}</h3>
                 <button type="button" className="spe-ghost" onClick={() => void load()} disabled={busy}>
-                  ↻ Refresh
+                  {t.refresh}
                 </button>
               </div>
 
@@ -260,13 +269,14 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                     uploadFiles(Array.from(event.dataTransfer.files));
                   }}
                 >
-                  {progress?.startsWith("Uploading") ? (
+                  {uploading && progress ? (
                     <ProgressSpinner label={progress} />
                   ) : (
                     <>
                       <span className="spe-drop-icon" aria-hidden="true">⬆</span>
                       <span>
-                        <strong>Drop files here</strong> or click to upload
+                        <strong>{t.dropFiles}</strong>
+                        {t.orClickToUpload}
                       </span>
                     </>
                   )}
@@ -285,7 +295,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
               )}
 
               {status && <p className="spe-banner spe-banner-ok">{status}</p>}
-              {progress && !progress.startsWith("Uploading") && container && <ProgressSpinner label={progress} />}
+              {progress && !uploading && container && <ProgressSpinner label={progress} />}
 
               <ul className="spe-files">
                 {(files ?? []).map((file) => {
@@ -299,49 +309,49 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                       </div>
                       {confirmDelete === file.id ? (
                         <div className="spe-actions spe-confirm">
-                          <span>Delete for everyone?</span>
+                          <span>{t.deleteForEveryone}</span>
                           <button
                             type="button"
                             className="spe-danger"
                             disabled={busy}
                             onClick={() =>
-                              void run(`Deleting ${file.name}`, async () => {
+                              void run(t.deleting(file.name), async () => {
                                 await caseFiles.remove(containerId, file.id);
                                 setConfirmDelete(null);
                                 if (preview?.itemId === file.id) {
                                   setPreview(null);
                                 }
                                 setFiles(await caseFiles.list(containerId));
-                                setStatus(`${file.name} was moved to the container's recycle bin.`);
+                                setStatus(t.deleted(file.name));
                               })
                             }
                           >
-                            Delete
+                            {t.delete}
                           </button>
                           <button type="button" className="spe-ghost" disabled={busy} onClick={() => setConfirmDelete(null)}>
-                            Cancel
+                            {t.cancel}
                           </button>
                         </div>
                       ) : (
                       <div className="spe-actions">
                         <button type="button" className="spe-ghost" disabled={busy} onClick={() => void openPreview(file.id, file.name)}>
-                          Preview
+                          {t.preview}
                         </button>
                         <button
                           type="button"
                           className="spe-ghost"
                           disabled={busy}
                           onClick={() =>
-                            void run(`Preparing ${file.name}`, async () => {
+                            void run(t.preparingDownload(file.name), async () => {
                               // A pop-up opened after an await is blocked; the download URL is served as an attachment.
                               const link = document.createElement("a");
                               link.href = await caseFiles.download(containerId, file.id);
                               link.click();
-                              setStatus(`Download started for ${file.name}.`);
+                              setStatus(t.downloadStarted(file.name));
                             })
                           }
                         >
-                          Download
+                          {t.download}
                         </button>
                         {canEdit && (
                           <button
@@ -350,15 +360,15 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                             disabled={busy}
                             onClick={() => setSharing(sharing === file.id ? null : file.id)}
                           >
-                            Share
+                            {t.share}
                           </button>
                         )}
                         {canEdit && (
                           <button
                             type="button"
                             className="spe-close"
-                            aria-label={`Delete ${file.name}`}
-                            title="Delete"
+                            aria-label={t.deleteFile(file.name)}
+                            title={t.delete}
                             disabled={busy}
                             onClick={() => setConfirmDelete(file.id)}
                           >
@@ -371,18 +381,18 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                         <div className="spe-preview-panel" ref={previewPanel}>
                           <div className="spe-preview-bar">
                             <strong className="spe-file-name" title={preview.name}>
-                              Preview · {preview.name}
+                              {t.previewOf(preview.name)}
                             </strong>
                             <div className="spe-actions">
                               <a className="spe-preview-link" href={preview.url} target="_blank" rel="noopener noreferrer">
-                                Open in new tab ↗
+                                {t.openInNewTab}
                               </a>
-                              <button type="button" className="spe-close" aria-label="Close preview" onClick={() => setPreview(null)}>
+                              <button type="button" className="spe-close" aria-label={t.closePreview} onClick={() => setPreview(null)}>
                                 ✕
                               </button>
                             </div>
                           </div>
-                          <iframe className="spe-preview" title={`Preview of ${preview.name}`} src={preview.url} />
+                          <iframe className="spe-preview" title={t.previewOf(preview.name)} src={preview.url} />
                         </div>
                       )}
                       {sharing === file.id && (
@@ -395,8 +405,8 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
               {files?.length === 0 && (
                 <div className="spe-empty-card">
                   <span className="spe-empty-icon" aria-hidden="true">📄</span>
-                  <h3>No documents yet</h3>
-                  <p>{canEdit ? "Drop the first file above to get started." : "Documents added to this case will show up here."}</p>
+                  <h3>{t.noDocuments}</h3>
+                  <p>{canEdit ? t.noDocumentsEditor : t.noDocumentsReader}</p>
                 </div>
               )}
             </section>
@@ -410,14 +420,14 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
             <div className="spe-copilot-head">
               <span className="spe-sparkle" aria-hidden="true">✦</span>
               <div>
-                <h3>Ask Copilot</h3>
-                <p>Answers come from this case&apos;s documents only.</p>
+                <h3>{t.askCopilot}</h3>
+                <p>{t.copilotScope}</p>
               </div>
             </div>
             <div className="spe-transcript">
               {turns.length === 0 && (
                 <div className="spe-suggestions">
-                  {suggestedQuestions.map((suggestion) => (
+                  {t.suggestedQuestions.map((suggestion) => (
                     <button key={suggestion} type="button" className="spe-suggestion" onClick={() => void ask(suggestion)}>
                       {suggestion}
                     </button>
@@ -429,17 +439,17 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                   <p className="spe-bubble spe-question">{turn.question}</p>
                   <div className="spe-bubble spe-answer">
                     {!turn.hits && !turn.error && (
-                      <span className="spe-typing" aria-label="Copilot is searching">
+                      <span className="spe-typing" aria-label={t.copilotSearching}>
                         <span />
                         <span />
                         <span />
                       </span>
                     )}
                     {turn.error && <p className="spe-error-text">{turn.error}</p>}
-                    {turn.hits?.length === 0 && <p>I found nothing about that in this case&apos;s documents.</p>}
+                    {turn.hits?.length === 0 && <p>{t.copilotNothing}</p>}
                     {turn.hits?.map((hit, index) => (
                       <div key={`${hit.itemId}-${index}`} className="spe-passage">
-                        <p>{hit.text || "This file matches, but has no text passage."}</p>
+                        <p>{hit.text || t.copilotNoPassage}</p>
                         <button type="button" className="spe-source" onClick={() => void openPreview(hit.itemId, hit.name)}>
                           📎 {hit.name}
                         </button>
@@ -458,10 +468,10 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
               }}
             >
               <textarea
-                aria-label="Question for Copilot"
+                aria-label={t.questionLabel}
                 value={question}
                 rows={2}
-                placeholder="Ask about this case's documents…"
+                placeholder={t.questionPlaceholder}
                 onChange={(event) => setQuestion(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
@@ -470,7 +480,7 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
                   }
                 }}
               />
-              <button type="submit" className="spe-send" aria-label="Ask Copilot" disabled={asking || !question.trim()}>
+              <button type="submit" className="spe-send" aria-label={t.askCopilot} disabled={asking || !question.trim()}>
                 ➤
               </button>
             </form>
@@ -478,5 +488,6 @@ export const SharePointEmbedded: React.FC<SharePointEmbeddedProps> = ({ caseId, 
         </div>
       )}
     </div>
+    </CaseTextContext.Provider>
   );
 };

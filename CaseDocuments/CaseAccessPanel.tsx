@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useCaseText } from "./case-documents-text";
 import { errorMessage } from "./CaseDocumentsGraph";
 import { ProgressSpinner } from "./ProgressSpinner";
 
@@ -34,23 +35,23 @@ interface CaseAccessPanelProps {
   canEdit: boolean;
 }
 
-const roleLabels: Record<string, string> = { reader: "Read", writer: "Edit", manager: "Manage", owner: "Owner" };
-
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   return ((parts[0]?.[0] ?? "?") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 }
 
 function RoleSelect({ value, disabled, onChange }: { value: string; disabled: boolean; onChange: (role: ContactRole) => void }) {
+  const t = useCaseText();
   return (
-    <select aria-label="Access" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value as ContactRole)}>
-      <option value="reader">Read</option>
-      <option value="writer">Edit</option>
+    <select aria-label={t.access} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value as ContactRole)}>
+      <option value="reader">{t.roles.reader}</option>
+      <option value="writer">{t.roles.writer}</option>
     </select>
   );
 }
 
 export const CaseAccessPanel: React.FC<CaseAccessPanelProps> = ({ caseId, access, canEdit }) => {
+  const t = useCaseText();
   const [entries, setEntries] = React.useState<AccessEntry[] | null>(null);
   const [contact, setContact] = React.useState<ContactChoice | null>(null);
   const [shareBy, setShareBy] = React.useState<"contact" | "email">("contact");
@@ -66,7 +67,7 @@ export const CaseAccessPanel: React.FC<CaseAccessPanelProps> = ({ caseId, access
       await work();
       setEntries(await access.list(caseId));
     } catch (caught) {
-      setError(errorMessage(caught, "The access request failed."));
+      setError(errorMessage(caught, t.accessRequestFailed));
     } finally {
       setProgress(null);
     }
@@ -81,18 +82,18 @@ export const CaseAccessPanel: React.FC<CaseAccessPanelProps> = ({ caseId, access
         setContact(picked);
       }
     } catch {
-      setError("Could not open the contact lookup.");
+      setError(t.contactLookupFailed);
     }
   };
 
   React.useEffect(() => {
-    void run("Loading who has access", () => Promise.resolve());
+    void run(t.loadingAccess, () => Promise.resolve());
   }, [caseId]);
 
   return (
     <div className="spe-access">
       <div className="spe-row">
-        <h3>People with access</h3>
+        <h3>{t.peopleWithAccess}</h3>
         {entries && <span className="spe-count">{entries.length}</span>}
       </div>
       {error && <p className="spe-banner spe-banner-error">{error}</p>}
@@ -107,33 +108,33 @@ export const CaseAccessPanel: React.FC<CaseAccessPanelProps> = ({ caseId, access
               </span>
               <div className="spe-file-name">
                 <strong>{entry.name || entry.email}</strong>
-                <span>{entry.external ? entry.email : "Colleague · follows Dynamics access"}</span>
+                <span>{entry.external ? entry.email : t.colleague}</span>
               </div>
               {entry.external && canEdit ? (
                 <div className="spe-actions">
                   <RoleSelect
                     value={entry.role}
                     disabled={busy}
-                    onChange={(next) => void run("Updating access", () => access.update(caseId, entry.id, next))}
+                    onChange={(next) => void run(t.updatingAccess, () => access.update(caseId, entry.id, next))}
                   />
                   <button
                     type="button"
                     className="spe-close"
-                    aria-label={`Remove ${entry.name || entry.email}`}
+                    aria-label={t.remove(entry.name || entry.email)}
                     disabled={busy}
-                    onClick={() => void run("Removing access", () => access.remove(caseId, entry.id))}
+                    onClick={() => void run(t.removingAccess, () => access.remove(caseId, entry.id))}
                   >
                     ✕
                   </button>
                 </div>
               ) : (
-                <span className={`spe-role spe-role-${entry.role}`}>{roleLabels[entry.role] ?? entry.role}</span>
+                <span className={`spe-role spe-role-${entry.role}`}>{t.roles[entry.role] ?? entry.role}</span>
               )}
             </li>
           ))}
         </ul>
       )}
-      {entries?.length === 0 && <p className="spe-hint">Nobody has access to this case container yet.</p>}
+      {entries?.length === 0 && <p className="spe-hint">{t.nobodyHasAccess}</p>}
 
       {canEdit && (
         <form
@@ -141,13 +142,13 @@ export const CaseAccessPanel: React.FC<CaseAccessPanelProps> = ({ caseId, access
           onSubmit={(event) => {
             event.preventDefault();
             if (shareBy === "contact" && contact) {
-              void run(`Giving ${contact.name} access`, async () => {
+              void run(t.givingAccess(contact.name), async () => {
                 await access.grant(caseId, contact.id, role);
                 setContact(null);
               });
             } else if (shareBy === "email" && email.trim()) {
               const address = email.trim();
-              void run(`Sharing with ${address}`, async () => {
+              void run(t.sharingWith(address), async () => {
                 await access.shareByEmail(caseId, address, role);
                 setEmail("");
               });
@@ -155,13 +156,13 @@ export const CaseAccessPanel: React.FC<CaseAccessPanelProps> = ({ caseId, access
           }}
         >
           <div className="spe-row">
-            <span className="spe-grant-label">Share the whole case with someone outside the company</span>
-            <div className="spe-segmented" role="tablist" aria-label="Share with">
+            <span className="spe-grant-label">{t.shareWholeCase}</span>
+            <div className="spe-segmented" role="tablist" aria-label={t.shareWith}>
               <button type="button" role="tab" aria-selected={shareBy === "contact"} className={shareBy === "contact" ? "on" : ""} onClick={() => setShareBy("contact")}>
-                Contact in CRM
+                {t.contactInCrm}
               </button>
               <button type="button" role="tab" aria-selected={shareBy === "email"} className={shareBy === "email" ? "on" : ""} onClick={() => setShareBy("email")}>
-                Anyone by email
+                {t.anyoneByEmail}
               </button>
             </div>
           </div>
@@ -181,15 +182,15 @@ export const CaseAccessPanel: React.FC<CaseAccessPanelProps> = ({ caseId, access
                     {contact.name}
                   </>
                 ) : (
-                  "＋ Choose contact"
+                  t.chooseContact
                 )}
               </button>
             ) : (
               <input
                 type="email"
                 className="spe-email"
-                aria-label="Email address"
-                placeholder="name@company.com"
+                aria-label={t.emailAddress}
+                placeholder={t.emailPlaceholder}
                 value={email}
                 disabled={busy}
                 onChange={(event) => setEmail(event.target.value)}
@@ -197,10 +198,10 @@ export const CaseAccessPanel: React.FC<CaseAccessPanelProps> = ({ caseId, access
             )}
             <RoleSelect value={role} disabled={busy} onChange={setRole} />
             <button type="submit" disabled={busy || (shareBy === "contact" ? !contact : !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()))}>
-              {shareBy === "contact" ? "Give access" : "Share"}
+              {shareBy === "contact" ? t.giveAccess : t.share}
             </button>
           </div>
-          <span className="spe-hint">They get an email invitation and sign in with their own work or Microsoft account.</span>
+          <span className="spe-hint">{t.wholeCaseHint}</span>
         </form>
       )}
     </div>

@@ -49,7 +49,7 @@ export interface CaseFiles {
   share(containerId: string, itemId: string, email: string, role: FileShareRole): Promise<void>;
   updateShare(containerId: string, itemId: string, permissionId: string, role: FileShareRole): Promise<void>;
   unshare(containerId: string, itemId: string, permissionId: string): Promise<void>;
-  emailLink(to: string, file: CaseFile): Promise<void>;
+  sendEmail(to: string, subject: string, html: string): Promise<void>;
   search(containerId: string, query: string): Promise<SearchHit[]>;
   signIn(): Promise<void>;
 }
@@ -143,10 +143,6 @@ function formatNorwegianDate(iso: string): string {
   const day = date.toLocaleDateString("nb-NO", { day: "2-digit", month: "2-digit", year: "numeric" });
   const time = date.toLocaleTimeString("nb-NO", { hour: "2-digit", minute: "2-digit" });
   return `${day} kl. ${time}`;
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function sameUrl(left: string, right: string): boolean {
@@ -313,19 +309,11 @@ export function createCaseFiles(loadSettings: () => Promise<GraphSettings>): Cas
       );
     },
 
-    async emailLink(to, file) {
-      if (!file.webUrl) {
-        throw new Error("SharePoint did not return a link for this file.");
-      }
-      const name = escapeHtml(file.name);
-      const content =
-        `<p>Hi,</p><p>I have shared <strong>${name}</strong> with you.</p>` +
-        `<p><a href="${escapeHtml(file.webUrl)}">Open ${name}</a></p>` +
-        `<p>Sign in as ${escapeHtml(to)} to open it.</p>`;
+    async sendEmail(to, subject, html) {
       await graph<undefined>("/me/sendMail", {
         method: "POST",
         body: JSON.stringify({
-          message: { subject: `${file.name} has been shared with you`, body: { contentType: "HTML", content }, toRecipients: [{ emailAddress: { address: to } }] },
+          message: { subject, body: { contentType: "HTML", content: html }, toRecipients: [{ emailAddress: { address: to } }] },
           saveToSentItems: true,
         }),
       }, mailScopes);

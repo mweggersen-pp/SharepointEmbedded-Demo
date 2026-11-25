@@ -2,6 +2,7 @@ import { IInputs, IOutputs } from "./generated/ManifestTypes";
 import { createCaseFiles, errorMessage, GraphSettings } from "./CaseDocumentsGraph";
 import { AccessEntry, CaseAccess, ContactChoice } from "./CaseAccessPanel";
 import { CaseContainer, SharePointEmbedded, SharePointEmbeddedProps } from "./SharePointEmbedded";
+import { caseTextFor } from "./case-documents-text";
 import * as React from "react";
 
 interface ActionResult {
@@ -117,6 +118,7 @@ export class CaseDocuments implements ComponentFramework.ReactControl<IInputs, I
     };
 
     this.props = {
+      text: caseTextFor(context.userSettings.languageId),
       files,
       access,
       ensureContainer: async (caseId) => {

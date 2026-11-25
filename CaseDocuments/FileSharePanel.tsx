@@ -1,5 +1,6 @@
 import * as React from "react";
 import { CaseAccess, initials } from "./CaseAccessPanel";
+import { CaseText, useCaseText } from "./case-documents-text";
 import { CaseFile, CaseFiles, errorMessage, FileShare, FileShareRole } from "./CaseDocumentsGraph";
 import { ProgressSpinner } from "./ProgressSpinner";
 
@@ -14,18 +15,33 @@ interface FileSharePanelProps {
 
 const validEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function linkEmailHtml(t: CaseText, file: CaseFile, to: string): string {
+  const name = escapeHtml(file.name);
+  return (
+    `<p>${t.emailGreeting}</p><p>${t.emailShared(`<strong>${name}</strong>`)}</p>` +
+    `<p><a href="${escapeHtml(file.webUrl ?? "")}">${t.emailOpen(name)}</a></p>` +
+    `<p>${t.emailSignIn(escapeHtml(to))}</p>`
+  );
+}
+
 const wait = (seconds: number) => new Promise<void>((resolve) => window.setTimeout(resolve, seconds * 1000));
 
 function FileRoleSelect({ value, disabled, onChange }: { value: FileShareRole; disabled: boolean; onChange: (role: FileShareRole) => void }) {
+  const t = useCaseText();
   return (
-    <select aria-label="Access" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value as FileShareRole)}>
-      <option value="read">Read</option>
-      <option value="write">Edit</option>
+    <select aria-label={t.access} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value as FileShareRole)}>
+      <option value="read">{t.roles.reader}</option>
+      <option value="write">{t.roles.writer}</option>
     </select>
   );
 }
 
 export const FileSharePanel: React.FC<FileSharePanelProps> = ({ caseId, containerId, file, files, access, onClose }) => {
+  const t = useCaseText();
   const [shares, setShares] = React.useState<FileShare[] | null>(null);
   const [email, setEmail] = React.useState("");
   const [role, setRole] = React.useState<FileShareRole>("read");
@@ -42,7 +58,7 @@ export const FileSharePanel: React.FC<FileSharePanelProps> = ({ caseId, containe
       await work();
       setShares(await files.listShares(containerId, file.id));
     } catch (caught) {
-      setError(errorMessage(caught, "The sharing request failed."));
+      setError(errorMessage(caught, t.sharingFailed));
     } finally {
       setProgress(null);
     }
@@ -51,7 +67,7 @@ export const FileSharePanel: React.FC<FileSharePanelProps> = ({ caseId, containe
   const busy = progress !== null;
 
   React.useEffect(() => {
-    void run("Loading who this file is shared with", () => Promise.resolve());
+    void run(t.loadingShares, () => Promise.resolve());
   }, [file.id]);
 
   const chooseContact = async () => {
@@ -61,12 +77,12 @@ export const FileSharePanel: React.FC<FileSharePanelProps> = ({ caseId, containe
         return;
       }
       if (!picked.email) {
-        setError(`${picked.name} has no email address in CRM.`);
+        setError(t.noEmailInCrm(picked.name));
         return;
       }
       setEmail(picked.email);
     } catch {
-      setError("Could not open the contact lookup.");
+      setError(t.contactLookupFailed);
     }
   };
 
@@ -76,12 +92,12 @@ export const FileSharePanel: React.FC<FileSharePanelProps> = ({ caseId, containe
       setCopiedFor(key);
       window.setTimeout(() => setCopiedFor(null), 2000);
     } catch {
-      setError("Could not copy the link.");
+      setError(t.copyFailed);
     }
   };
 
   const shareWith = (address: string) =>
-    run(`Sharing ${file.name}`, async () => {
+    run(t.sharingFile(file.name), async () => {
       const created = await access.ensureGuest(caseId, address);
       // SharePoint sees a brand-new guest account only after Entra replicates it.
       for (let attempt = 1; ; attempt++) {
@@ -92,17 +108,20 @@ export const FileSharePanel: React.FC<FileSharePanelProps> = ({ caseId, containe
           if (!created || attempt === 5) {
             throw caught;
           }
-          setProgress(`Setting up a guest account for ${address}`);
+          setProgress(t.settingUpGuest(address));
           await wait(5 * attempt);
         }
       }
       setEmail("");
-      setProgress(`Emailing the link to ${address}`);
+      setProgress(t.emailingLink(address));
       try {
-        await files.emailLink(address, file);
-        setStatus(`${address} can now open this file and got an email with the link.`);
+        if (!file.webUrl) {
+          throw new Error(t.copyFailed);
+        }
+        await files.sendEmail(address, t.emailSubject(file.name), linkEmailHtml(t, file, address));
+        setStatus(t.sharedAndEmailed(address));
       } catch (caught) {
-        setError(`${address} can open the file, but the email was not sent: ${errorMessage(caught, "unknown error")} Use Copy link instead.`);
+        setError(t.emailFailed(address, errorMessage(caught, t.unknownError)));
       }
     });
 
@@ -111,8 +130,8 @@ export const FileSharePanel: React.FC<FileSharePanelProps> = ({ caseId, containe
   return (
     <div className="spe-file-share">
       <div className="spe-row">
-        <span className="spe-grant-label">Share only this file</span>
-        <button type="button" className="spe-close" aria-label="Close sharing" onClick={onClose}>
+        <span className="spe-grant-label">{t.shareOnlyThisFile}</span>
+        <button type="button" className="spe-close" aria-label={t.closeSharing} onClick={onClose}>
           ✕
         </button>
       </div>
@@ -129,24 +148,24 @@ export const FileSharePanel: React.FC<FileSharePanelProps> = ({ caseId, containe
               </span>
               <div className="spe-file-name">
                 <strong>{share.name || share.email}</strong>
-                <span>{share.name ? share.email : "Invitation sent"}</span>
+                <span>{share.name ? share.email : t.invitationSent}</span>
               </div>
               {file.webUrl && (
                 <button type="button" className="spe-ghost" onClick={() => void copyLink(share.key)}>
-                  {copiedFor === share.key ? "Copied ✓" : "Copy link"}
+                  {copiedFor === share.key ? t.copied : t.copyLink}
                 </button>
               )}
               <FileRoleSelect
                 value={share.role}
                 disabled={busy}
-                onChange={(next) => void run("Updating access to the file", () => files.updateShare(containerId, file.id, share.permissionId, next))}
+                onChange={(next) => void run(t.updatingFileAccess, () => files.updateShare(containerId, file.id, share.permissionId, next))}
               />
               <button
                 type="button"
                 className="spe-close"
-                aria-label={`Stop sharing with ${share.name || share.email}`}
+                aria-label={t.stopSharing(share.name || share.email)}
                 disabled={busy}
-                onClick={() => void run("Removing access to the file", () => files.unshare(containerId, file.id, share.permissionId))}
+                onClick={() => void run(t.removingFileAccess, () => files.unshare(containerId, file.id, share.permissionId))}
               >
                 ✕
               </button>
@@ -154,7 +173,7 @@ export const FileSharePanel: React.FC<FileSharePanelProps> = ({ caseId, containe
           ))}
         </ul>
       )}
-      {shares?.length === 0 && <p className="spe-hint">This file is not shared with anyone outside the case yet.</p>}
+      {shares?.length === 0 && <p className="spe-hint">{t.fileNotShared}</p>}
 
       <form
         className="spe-grant-row"
@@ -168,21 +187,21 @@ export const FileSharePanel: React.FC<FileSharePanelProps> = ({ caseId, containe
         <input
           type="email"
           className="spe-email"
-          aria-label="Email address"
-          placeholder="name@company.com"
+          aria-label={t.emailAddress}
+          placeholder={t.emailPlaceholder}
           value={email}
           disabled={busy}
           onChange={(event) => setEmail(event.target.value)}
         />
         <button type="button" className="spe-contact-pick" disabled={busy} onClick={() => void chooseContact()}>
-          ＋ CRM contact
+          {t.crmContact}
         </button>
         <FileRoleSelect value={role} disabled={busy} onChange={setRole} />
         <button type="submit" disabled={busy || !validEmail.test(address)}>
-          Share file
+          {t.shareFile}
         </button>
       </form>
-      <span className="spe-hint">They get an email from you with a link to this file only, and sign in as that email address to open it.</span>
+      <span className="spe-hint">{t.fileShareHint}</span>
     </div>
   );
 };
